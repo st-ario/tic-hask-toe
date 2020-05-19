@@ -18,9 +18,9 @@ showRow n (Grid b)
       where a = fmap show b
 
 instance (Show w) => Show (Grid w) where
-  show (Grid a) = showRow 1 (Grid a) ++ "\n"
+  show (Grid a) = "\n" ++ showRow 1 (Grid a) ++ "\n"
                ++ showRow 2 (Grid a) ++ "\n"
-               ++ showRow 3 (Grid a)
+               ++ showRow 3 (Grid a) ++ "\n"
 
 instance (Show w) => Show (Match w) where
   show m =

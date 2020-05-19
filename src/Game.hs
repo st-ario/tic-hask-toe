@@ -3,7 +3,7 @@ module Game where
 import Data.Either (isRight, fromRight)
 
 -- the quality of a token being empty, or a game being in progress is
--- qualitatively different from being resp. X/Y or won/tied
+-- different from being resp. X/Y or won/tied
 class Winnable a where
   isOver :: a -> Bool
   isWon  :: a -> Bool
@@ -24,9 +24,9 @@ newtype Grid w = Grid { toList :: [w]} deriving Eq
 
 toGrid :: [w] -> Grid w
 toGrid a =
-  if length a >= 9
-    then Grid $ take 9 a
-    else error "Cannot convert to Grid a list with less than 9 elements"
+  if length a == 9
+    then Grid a
+    else error "A Grid must have 9 elements"
 
 instance Functor Grid where
   fmap f grid = toGrid $ map f $ toList grid
@@ -65,12 +65,12 @@ instance (Eq w, Winnable w) => Winnable (Grid w) where
 -- determine the winner for a single Grid, otherwise give Left False if the
 -- game is tied and Left True if it is still ongoing
 --
--- works properly only on legal positions
+-- works properly only on legal positions (at most one winner)
 gridStatus :: (Winnable w, Eq w) => Grid w -> Either Bool w
 gridStatus g
   | isWon g = Right winner
-  | isOver g  = Left False
-  | otherwise = Left True
+  | isOver g  = Left False  -- tied game
+  | otherwise = Left True   -- ongoing game
     where winner = head [head x | x <- triplets g, all (==head x) (tail x)]
 
 getStatuses :: (Eq w, Winnable w) => Match w -> Grid (Either Bool w)
@@ -87,41 +87,15 @@ instance (Eq w, Winnable w) => Winnable (Match w) where
     in  True `elem` map (isTris) x
   isOver m =
     let x = toList $ getStatuses m
-    in  isWon m || all (/= Left True) x
+    in  isWon m || not (any (== Left True) x)
 
 -- determine the winner for the whole Match, otherwise give Left False if the
 -- game is tied and Left True if it is still ongoing
 --
--- works properly only on legal positions
+-- works properly only on legal positions (at most one winner)
 matchStatus :: (Winnable w, Eq w) => Match w -> Either Bool w
 matchStatus m
   | isWon m = head [x | (x:xs) <- y, isRight x, all (==x) xs]
-  | isOver m  = Left False
-  | otherwise = Left True
+  | isOver m  = Left False  -- tied game
+  | otherwise = Left True   -- ongoing game
     where y = triplets $ getStatuses m
-
--- given two integers m, n in {0,1,2}, a value w and a Grid, replace with w
--- the element with coordinates (m,n)
---
--- the position of a value in the list encoding the grid is the expansion
--- in base 3 of the coordinates
-setGridEl :: Int -> Int -> w -> Grid w -> Grid w
-setGridEl m n w grid
-  | m >= 3 || n >= 3 = error "Coordinates in a Grid must be in {0, 1, 2}"
-  | otherwise = toGrid $ (take pos xs) ++ [w] ++ drop (pos+1) xs
-    where pos = (3*m + n)
-          xs = toList grid
-
--- given four integers a, b, m, n in {0,1,2}, a value w and a Match, replace
--- with w the element with coordinates (m,n) in the subGrid with coordinates
--- (a,b)
---
--- the position of a value in the list encoding the grid is the expansion
--- in base 3 of the coordinates
-setMatchEl :: Int -> Int -> Int -> Int -> w -> Match w -> Match w
-setMatchEl a b m n w match
-  | any (>=3) [a,b,m,n] = error "Coordinates in a Match must be in {0, 1, 2}"
-  | otherwise = toMatch $ setGridEl a b newInnerGrid outerGrid
-    where pos = (3*a + b)
-          outerGrid = getGrids match
-          newInnerGrid = setGridEl m n w $ (toList outerGrid)!!pos

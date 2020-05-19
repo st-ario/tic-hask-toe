@@ -1,5 +1,4 @@
 *.txt
-Tests.hs
 
 dist
 dist-*
