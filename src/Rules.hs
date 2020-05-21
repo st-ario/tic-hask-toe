@@ -6,7 +6,7 @@ import Game
 import TicUI
 
 import           Control.Lens
-import           Data.Tree (Tree, Forest, unfoldTree, unfoldForest)
+import           Data.Tree (Tree, Forest, unfoldTree)
 import qualified Data.Tree as T
 
 data Coord = Coord { _row :: Int

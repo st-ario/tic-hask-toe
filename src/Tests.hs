@@ -3,9 +3,12 @@ module Tests where
 import Game
 import TicUI
 import Rules
+import TreeZipper
+import MCTS
 
-import            Data.Tree (Tree, Forest, unfoldTree, unfoldForest)
-import  qualified Data.Tree as T
+import           Data.Tree (Tree, Forest, unfoldTree, unfoldForest)
+import qualified Data.Tree as T
+import qualified System.Random as R
 
 gX = toGrid [X,X,X,EM,O,O,EM,EM,O]     -- won by X
 gX' = toGrid [EM,O,O,X,X,X,EM,O,X]     -- won by X
@@ -56,3 +59,7 @@ fT6 = (T.Node 6 [])
 fT7 = (T.Node 7 [fT3,fT2])
 fT8 = (T.Node 8 [])
 fT9 = (T.Node 9 [fT8,fT7,fT6,fT5])
+
+main = do
+  g <- R.newStdGen
+  return $ simulationTTT g (O,gI)
