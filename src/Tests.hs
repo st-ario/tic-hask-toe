@@ -9,6 +9,7 @@ import MCTS
 import           Data.Tree (Tree, Forest, unfoldTree, unfoldForest)
 import qualified Data.Tree as T
 import qualified System.Random as R
+import Control.Monad
 
 gX = toGrid [X,X,X,EM,O,O,EM,EM,O]     -- won by X
 gX' = toGrid [EM,O,O,X,X,X,EM,O,X]     -- won by X
@@ -60,6 +61,10 @@ fT7 = (T.Node 7 [fT3,fT2])
 fT8 = (T.Node 8 [])
 fT9 = (T.Node 9 [fT8,fT7,fT6,fT5])
 
+gG = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]
+
 main = do
   g <- R.newStdGen
-  return $ simulationTTT g (O,gI)
+  --return $ simulationTTT g (O,gI)
+  return $ getBestMove g (O,gG)
+  -- return $ getBestMove g (X,gG)

@@ -31,12 +31,18 @@ descendTo (t,ps) n = (t',(Node l r p):ps)
         r = drop (n+1) sub
         p = T.rootLabel t
 
+allTheWayBack :: ZipNode a -> ZipNode a
+allTheWayBack (t,ps) =
+  if length ps == 0
+    then (t,ps)
+    else allTheWayBack $ stepBack (t,ps)
+
 replaceNode :: ZipNode a -> a -> ZipNode a
 replaceNode (t,ps) new = (t',ps)
   where t' = T.Node {T.rootLabel=new , T.subForest=(T.subForest t)}
 
 -- apply a function to all children of the current position
-replaceSubForestBy :: ZipNode a -> (Tree a -> Tree a) -> ZipNode a
-replaceSubForestBy (t,ps) f = (t',ps)
+replaceSubForestBy :: (Tree a -> Tree a) -> ZipNode a -> ZipNode a
+replaceSubForestBy f (t,ps) = (t',ps)
   where newForest = fmap f (T.subForest t)
         t' = T.Node {T.rootLabel=(T.rootLabel t) , T.subForest=newForest}

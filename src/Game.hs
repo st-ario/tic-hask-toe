@@ -1,6 +1,6 @@
 module Game where
 
-import Data.Either (isRight, fromRight)
+import Data.Either (isRight, isLeft, fromRight)
 
 -- the quality of a token being empty, or a game being in progress is
 -- different from being resp. X/Y or won/tied
@@ -54,8 +54,8 @@ triplets (Grid a) =
    ,[(a!!2),(a!!4),(a!!6)]
   ]
 
--- games are won when there's a winning triplet
--- games are over when a player wins or when the grid is full
+-- grids are won when there's a winning triplet
+-- grids are over when a player wins or when the grid is full
 instance (Eq w, Winnable w) => Winnable (Grid w) where
   isWon (Grid a) =
     let isTris x = isWon (head x) && all (==head x) (tail x)
@@ -75,6 +75,15 @@ gridStatus g
 
 getStatuses :: (Eq w, Winnable w) => Match w -> Grid (Either Bool w)
 getStatuses m = fmap gridStatus (getGrids m)
+
+-- determine if the grid is won, tied or lost by the given player
+-- works properly only if called on a game that is over
+gridOutcome :: (Eq w, Winnable w) => w -> Grid w -> Integer
+gridOutcome p g
+  | isLeft status = 0
+  | p == (fromRight undefined status) = 1
+  | otherwise = -1
+  where status = gridStatus g
 
 -- a match is won when the status of some triplet is all "Right w" for the
 -- same w
