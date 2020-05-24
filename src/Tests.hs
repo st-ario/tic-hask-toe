@@ -13,6 +13,7 @@ import Control.Monad
 
 gX = toGrid [X,X,X,EM,O,O,EM,EM,O]     -- won by X
 gX' = toGrid [EM,O,O,X,X,X,EM,O,X]     -- won by X
+gX'' = toGrid [EM,X,EM,EM,X,O,EM,X,O]  -- won by X
 gO = toGrid [O,X,EM,X,O,EM,X,X,O]      -- won by O
 gO' = toGrid [EM,O,X,X,O,X,EM,O,EM]    -- won by O
 gI = toGrid $ take 9 $ cycle [EM]      -- in progress
@@ -61,7 +62,7 @@ fT7 = (T.Node 7 [fT3,fT2])
 fT8 = (T.Node 8 [])
 fT9 = (T.Node 9 [fT8,fT7,fT6,fT5])
 
-gG = toGrid [O,EM,EM,EM,X,O,EM,EM,X]
+gG = toGrid [EM,EM,X,EM,O,O,EM,EM,X]
 
 main = do
   g <- R.newStdGen

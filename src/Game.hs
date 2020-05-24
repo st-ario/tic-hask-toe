@@ -71,7 +71,7 @@ gridStatus g
   | isWon g = Right winner
   | isOver g  = Left False  -- tied game
   | otherwise = Left True   -- ongoing game
-    where winner = head [head x | x <- triplets g, all (==head x) (tail x)]
+    where winner = head [head x | x <- triplets g, isOver (head x), all (==head x) (tail x)]
 
 getStatuses :: (Eq w, Winnable w) => Match w -> Grid (Either Bool w)
 getStatuses m = fmap gridStatus (getGrids m)
