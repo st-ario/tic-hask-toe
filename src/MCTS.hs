@@ -167,7 +167,8 @@ mctsAlgorithm gen iteration winner wZipper --(t, ps)
       if
         -- when reaching a leaf of the game tree, backpropagate and restart from root
         | length (T.subForest t) == 0 -> do
-            -- trace (show $ _currentGrid . T.rootLabel $ t) $ return ()
+            -- trace ("I've been here before") $ return ()
+            trace (show $ _currentGrid . T.rootLabel $ t) $ return ()
             let diff = gridOutcome winner (_currentGrid . T.rootLabel $ t)
             backprop (t,ps) diff
             let newZipper = return $ allTheWayBack (t,ps)
@@ -176,7 +177,8 @@ mctsAlgorithm gen iteration winner wZipper --(t, ps)
         -- initialize all children, run simulations and backpropagate once for
         -- each of them, then restart from root
         | isNothing $ _weight $ T.rootLabel (T.subForest t !! 0) -> do
-            -- trace (show $ _currentGrid . T.rootLabel $ t) $ return ()
+            trace ("What do I do now?") $ return ()
+            --trace (show $ _currentGrid . T.rootLabel $ t) $ return ()
             let n = length (T.subForest t) -1
             let f x = expand gen winner (descendTo (t,ps) x)
             newSubForest <- forM [0..n] f
@@ -186,13 +188,14 @@ mctsAlgorithm gen iteration winner wZipper --(t, ps)
         -- when reaching a node whose children's weights have already been
         -- initialized, pick the best children according to ucb and restart from it
         | otherwise -> do
-            -- trace (show $ _currentGrid . T.rootLabel $ t) $ return ()
+            -- trace ("I know this position, I like this move") $ return ()
             n <- bestChild t
+            trace (show $ _currentGrid . T.rootLabel $ (T.subForest t !! n)) $ return ()
             let newZipper = return $ (descendTo (t, ps) n)
             mctsAlgorithm gen iteration winner newZipper
             -- NB the iteration number is not incremented, as the algorithm
             -- is not getting back to the root
-    where computationalBudget = 1 :: Integer
+    where computationalBudget = 10^3 :: Integer
 
 getBestMove :: R.StdGen -> (Token, Grid Token) -> (Token, Grid Token)
 getBestMove gen (lastPlayer, g) =
