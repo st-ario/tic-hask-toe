@@ -76,15 +76,6 @@ gridStatus g
 getStatuses :: (Eq w, Winnable w) => Match w -> Grid (Either Bool w)
 getStatuses m = fmap gridStatus (getGrids m)
 
--- determine if the grid is won, tied or lost by the given player
--- works properly only if called on a game that is over
-gridOutcome :: (Eq w, Winnable w) => w -> Grid w -> Integer
-gridOutcome p g
-  | isLeft status = 0
-  | p == (fromRight undefined status) = 1
-  | otherwise = -1
-  where status = gridStatus g
-
 -- a match is won when the status of some triplet is all "Right w" for the
 -- same w
 -- a match is over when is won or when there is no ongoing game in the

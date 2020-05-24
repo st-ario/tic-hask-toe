@@ -17,7 +17,7 @@ import           Data.Tree (Tree, Forest, unfoldTree)
 import qualified Data.Tree as T
 import           Debug.Trace (trace)
 import           Data.Maybe (isNothing, fromJust)
-import           Data.Either (fromRight, fromLeft)
+import           Data.Either (fromRight, fromLeft, isLeft)
 import           Control.Monad (forM, forM_)
 import           Data.List.Extras.Argmax
 import           Data.List (elemIndices)
@@ -44,7 +44,7 @@ simulation gen state = undefined
 
 -- ###################  Monte Carlo Tree Data Structures #######################
 
-type ValueOfNode = Integer
+type ValueOfNode = Double
 type NumberOfVisits = Integer
 type Weight s = Maybe (STRef s (ValueOfNode,NumberOfVisits))
 
@@ -55,15 +55,6 @@ data MCNode' s = MCN { _lastPlayer :: Token
                      }
 
 makeLenses ''MCNode'
-
--- if the STRef has been initialized, show it as "Something"
-instance (forall s. Show (MCNode' s)) where
-  show (MCN p g Nothing) = "("++ show p ++ ", " ++ show g ++", Nothing)"
-  show (MCN p g (Just _)) = "("++ show p ++ ", " ++ show g ++", Something)"
-
-notInitialized :: MCNode' s -> Bool
-notInitialized (MCN p g Nothing) = True
-notInitialized (MCN p g (Just _)) = False
 
 type MCTree s = Tree (MCNode' s)
 
@@ -89,6 +80,15 @@ unfoldGame (lastPlayer, g) = return $ unfoldTree seedGrid $ MCN lastPlayer g Not
 -- ###################  Monte Carlo Tree Search Algorithm ######################
 -- NB: ZipNode (MCNode' s) = (MCTree s, [Position (MCNode' s)])
 
+-- #### Parameters to Tune:
+tieWeight   = 1
+winWeight   = 2
+lossWeight  = -1
+ucbConst    = 10
+computationalBudget = 10^3 :: Integer
+-- tie = 2 win = 2 loss = -2 C = 1.2 Pretty good for UCB1, TTT
+-- tie = 1 win = 2 loss = -1 C = 10  GREAT for UCB-Minimal, TTT
+
 -- sets the weight of a node to (0,0)
 setToZero :: ST s (MCTree s) -> ST s (MCTree s)
 setToZero t = do
@@ -98,46 +98,51 @@ setToZero t = do
   -- test whether the bang is useful
   return (T.Node newRoot sf)
 
-{--
--- sets all the children's weight to (0,0)
-initialize :: ZipNode (MCNode' s) -> ZipNode (MCNode' s)
-initialize pos = replaceSubForestBy setToZero pos
---}
+-- determine if the grid is won, tied or lost by the given player
+-- and assigns weights accordingly
+-- works properly only if called on a game that is over
+gridOutcome :: (Eq w, Winnable w) => w -> Grid w -> Double
+gridOutcome p g
+  | isLeft status = tieWeight
+  | p == (fromRight undefined status) = winWeight
+  | otherwise = lossWeight
+  where status = gridStatus g
 
 -- Upper Confidence Bound formula
-ucb :: Integer -> Integer -> Integer -> Double
-ucb value nChild nParent  = (v / nc) + const * sqrt (1 * (log np) / nc)
-  where v = fromInteger value :: Double
-        nc = fromInteger nChild :: Double
-        -- const = 1 :: Double -- run tests to see if there are better choices
-        const = 1.4 :: Double -- good value for ordinary TTT
-        np = fromInteger nParent :: Double
+ucb :: Double -> Integer -> Integer -> Double
+-- UCB1:
+-- ucb v nChild nParent  = (v / nc) + ucbConst * sqrt (2 * (log np) / nc)
+-- UCB-Minimal:
+ucb v nChild nParent  = (v / nc) + ucbConst * (1 / nc)
+  where nc = fromInteger nChild :: Double
+        -- np = fromInteger nParent :: Double
 
 -- backpropagation algorithm
-backprop :: ZipNode (MCNode' s) -> Integer -> ST s ()
+backprop :: ZipNode (MCNode' s) -> Double -> ST s ()
 backprop (t,ps) diff = do
   let incr (v,n) =  (v + diff , n + 1)
   let x = fromJust . _weight . T.rootLabel $ t
-  -- x :: STRef (Integer, Integer)
+  -- x :: STRef (Double, Integer)
   modifySTRef' x incr
   y <- readSTRef x
-  trace ("At depth = " ++ show (depth (t,ps))) $ return ()
-  trace ("The current weight is " ++ show y) $ return ()
+  -- trace ("At depth = " ++ show (depth (t,ps))) $ return ()
+  -- trace ("The current weight is " ++ show y) $ return ()
   if length ps == 0
     then trace ("reached root, let's get going") $ return ()
-    else trace ("let's update depth " ++ show (depth (stepBack(t,ps))) ++ " with weight " ++ show diff) $ backprop (stepBack (t,ps)) diff
+    -- else trace ("let's update depth " ++ show (depth (stepBack(t,ps))) ++ " with weight " ++ show diff) $ backprop (stepBack (t,ps)) diff
+    else backprop (stepBack (t,ps)) diff
 
 -- returns the index of a child maximizing ucb
 -- if multiple children maximize ucb, it picks one randomly
 bestChild :: R.StdGen -> MCTree s -> ST s Int
 bestChild gen t = do
   parentWeight <- readSTRef $ (fromJust . _weight . T.rootLabel $ t)
-  -- parentWeight :: (ValueOfNode,NumberOfVisits) = (Integer, Integer)
+  -- parentWeight :: (ValueOfNode,NumberOfVisits) = (Double, Integer)
   let parentN = snd parentWeight
   let refValues = [x | x <- fmap (fromJust . _weight . T.rootLabel) (T.subForest t)]
-  -- refValues :: [STRef s (Integer,Integer)]
+  -- refValues :: [STRef s (Double,Integer)]
   valuesList <- forM refValues readSTRef
-  -- valuesList :: [(Integer, Integer)]
+  -- valuesList :: [(Double, Integer)]
   trace ("the weigh of the parent is " ++ show parentN) $ pure ()
   trace ("the weights of the children are " ++ show valuesList) $ pure ()
   let toMaximize (v,c) = ucb v c parentN
@@ -156,7 +161,7 @@ expand gen winner (t,ps) = do
   newTree <- setToZero $ return t
   let state = T.rootLabel newTree
   let result = simulationTTT gen (_lastPlayer state, _currentGrid state)
-  trace ("I want " ++ show winner ++ " to win") $ return ()
+  -- trace ("I want " ++ show winner ++ " to win") $ return ()
   trace ("from this position I could get here" ++ show result) $ pure ()
   let diff = gridOutcome winner (snd result)
   trace ("the feedback for this position is " ++ show diff) $ return ()
@@ -180,9 +185,8 @@ mctsAlgorithm gen iteration winner wZipper --(t, ps)
         -- when reaching a leaf of the game tree, backpropagate and restart from root
         | length (T.subForest t) == 0 -> do
             trace ("I've been here before") $ return ()
-            --trace (show $ _currentGrid . T.rootLabel $ t) $ return ()
             let diff = gridOutcome winner (_currentGrid . T.rootLabel $ t)
-            trace ("the outcome is" ++ show diff) $ return ()
+            trace ("the outcome is " ++ show diff) $ return ()
             backprop (t,ps) diff
             let newZipper = return $ allTheWayBack (t,ps)
             debugWeight <- (readSTRef. fromJust . _weight . T.rootLabel . fst $ allTheWayBack (t,ps))
@@ -194,13 +198,12 @@ mctsAlgorithm gen iteration winner wZipper --(t, ps)
         -- each of them, then restart from root
         | isNothing $ _weight $ T.rootLabel (T.subForest t !! 0) -> do
             trace ("What do I do now?") $ return ()
-            -- trace (show $ _currentGrid . T.rootLabel $ t) $ return ()
             let n = length (T.subForest t) -1
             let f x = expand gen winner (descendTo (t,ps) x)
             newSubForest <- forM [0..n] f
             let newTree = T.Node {T.rootLabel=(T.rootLabel t) , T.subForest=newSubForest}
             pair <- readSTRef . fromJust . _weight . T.rootLabel $ newTree
-            trace ("The new node ad depth " ++ show (depth (t,ps)) ++ " is" ++ show (_currentGrid . T.rootLabel $ newTree) ++ "with weight " ++ show pair) $ return ()
+            trace ("The new node at depth " ++ show (depth (t,ps)) ++ " is" ++ show (_currentGrid . T.rootLabel $ newTree) ++ "with weight " ++ show pair) $ return ()
             trace ("Its children are" ++ show (fmap (_currentGrid . T.rootLabel) newSubForest)) $ return ()
             debugValues <- forM (fmap (fromJust . _weight . T.rootLabel) newSubForest) readSTRef
             trace ("with weights" ++ show debugValues) $ return ()
@@ -217,7 +220,6 @@ mctsAlgorithm gen iteration winner wZipper --(t, ps)
             mctsAlgorithm gen iteration winner newZipper
             -- NB the iteration number is not incremented, as the algorithm
             -- is not getting back to the root
-    where computationalBudget = 10^4 :: Integer
 
 getBestMove :: R.StdGen -> (Token, Grid Token) -> (Token, Grid Token)
 getBestMove gen (lastPlayer, g) =

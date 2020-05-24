@@ -62,7 +62,7 @@ fT7 = (T.Node 7 [fT3,fT2])
 fT8 = (T.Node 8 [])
 fT9 = (T.Node 9 [fT8,fT7,fT6,fT5])
 
-gG = toGrid [EM,EM,X,EM,O,O,EM,EM,X]
+gG = toGrid [EM,EM,O,EM,X,EM,X,EM,O]
 
 main = do
   g <- R.newStdGen
