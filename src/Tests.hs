@@ -62,10 +62,11 @@ fT7 = (T.Node 7 [fT3,fT2])
 fT8 = (T.Node 8 [])
 fT9 = (T.Node 9 [fT8,fT7,fT6,fT5])
 
-gG = toGrid [EM,EM,O,EM,X,EM,X,EM,O]
+gG = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]
+
+t n = fmap snd $ (T.levels $ unfoldTree playTTT (O,gG)) !! n
 
 main = do
   g <- R.newStdGen
   -- return $ simulationTTT g (O,gI)
   return $ getBestMove g (O,gG)
-  -- return $ getBestMove g (X,gG)
