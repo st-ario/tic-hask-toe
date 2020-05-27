@@ -24,6 +24,7 @@ instance (Show w) => Show (Grid w) where
 
 instance (Show w) => Show (Match w) where
   show m =
+    "\n" ++
     showRow 1 (g!!0) ++ " ║ " ++ showRow 1 (g!!1) ++ " ║ " ++ showRow 1 (g!!2) ++ "\n" ++
     showRow 2 (g!!0) ++ " ║ " ++ showRow 2 (g!!1) ++ " ║ " ++ showRow 2 (g!!2) ++ "\n" ++
     showRow 3 (g!!0) ++ " ║ " ++ showRow 3 (g!!1) ++ " ║ " ++ showRow 3 (g!!2) ++ "\n" ++
@@ -35,4 +36,5 @@ instance (Show w) => Show (Match w) where
     showRow 1 (g!!6) ++ " ║ " ++ showRow 1 (g!!7) ++ " ║ " ++ showRow 1 (g!!8) ++ "\n" ++
     showRow 2 (g!!6) ++ " ║ " ++ showRow 2 (g!!7) ++ " ║ " ++ showRow 2 (g!!8) ++ "\n" ++
     showRow 3 (g!!6) ++ " ║ " ++ showRow 3 (g!!7) ++ " ║ " ++ showRow 3 (g!!8)
+    ++ "\n"
       where g = toList $ getGrids m

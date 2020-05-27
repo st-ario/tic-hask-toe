@@ -32,7 +32,7 @@ instance Functor Grid where
   fmap f grid = toGrid $ map f $ toList grid
 
 -- The conditions for a Match to be won are different from the ones of Grid,
--- and it also needs a different intance of Show
+-- and it also needs a different instance of Show
 newtype Match w = Match { getGrids :: Grid (Grid w) } deriving Eq
 
 toMatch :: Grid (Grid w) -> Match w

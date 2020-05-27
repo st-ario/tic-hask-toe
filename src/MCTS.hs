@@ -56,6 +56,9 @@ makeLenses ''MCNode'
 
 type MCTree s = Tree (MCNode' s)
 
+getWeight :: MCTree s -> STRef s (ValueOfNode,NumberOfVisits)
+getWeight = fromJust . _weight . T.rootLabel
+
 -- given the current node, return all legal positions reachable from it as
 -- children
 legalNodes' :: MCNode' s -> [MCNode' s]
@@ -127,19 +130,18 @@ ucb v nChild nParent  = (v / nc) + ucbConst * (1 / nc)
 backprop :: ZipNode (MCNode' s) -> Double -> ST s ()
 backprop (t,ps) diff = do
   let incr (v,n) =  (v + diff , n + 1)
-  let x = fromJust . _weight . T.rootLabel $ t
-  modifySTRef' x incr
+  modifySTRef' (getWeight t) incr
   if length ps == 0
     then return ()
     else backprop (stepBack (t,ps)) diff
 
 -- returns the index of a child maximizing ucb
--- if multiple children maximize ucb, it picks one randomly
+-- if multiple children maximize ucb, pick one randomly
 bestChild :: R.StdGen -> MCTree s -> ST s Int
 bestChild gen t = do
-  parentWeight <- readSTRef $ (fromJust . _weight . T.rootLabel $ t)
+  parentWeight <- readSTRef $ getWeight t
   let parentN = snd parentWeight
-  let refValues = [x | x <- fmap (fromJust . _weight . T.rootLabel) (T.subForest t)]
+  let refValues = [x | x <- fmap getWeight (T.subForest t)]
   valuesList <- forM refValues readSTRef
   -- trace ("the weigh of the parent is " ++ show parentN) $ pure ()
   -- trace ("the weights of the children are " ++ show valuesList) $ pure ()
@@ -149,15 +151,17 @@ bestChild gen t = do
   -- trace ("ucb is maximized by the ones in position " ++ show positions) $ return ()
   -- trace ("the UCBs are " ++ show (fmap toMaximize valuesList)) $ return ()
   let len = length positions - 1
-  let r = fst $ R.randomR (0,len) gen
-  -- trace ("let's pick " ++ show (positions !! r)) $ return ()
-  return (positions !! r)
+  if len == 0
+    then return (positions !! 0)
+    else do let r = fst $ R.randomR (0,len) gen
+            -- trace ("let's pick " ++ show (positions !! r)) $ return ()
+            return (positions !! r)
 
 expand :: R.StdGen -> Token -> ZipNode (MCNode' s) -> ST s (MCTree s)
 expand gen winner (t,ps) = do
   newTree <- setToZero $ return t
   let state = T.rootLabel newTree
-  let result = simulationTTT gen (_lastPlayer state, _currentGrid state)
+  let result = simulationTTT gen (state^.lastPlayer, state^.currentGrid)
   let diff = gridOutcome winner (snd result)
   backprop (newTree, ps) diff
   return newTree
@@ -170,7 +174,7 @@ mctsAlgorithm gen iteration winner wZipper
       (t,ps) <- wZipper
       n <- bestChild gen t
       let child = T.rootLabel (T.subForest t !! n)
-      return (_lastPlayer child, _currentGrid child)
+      return (child^.lastPlayer, child^.currentGrid)
   | otherwise = do
       (t,ps) <- wZipper
       if
@@ -188,7 +192,7 @@ mctsAlgorithm gen iteration winner wZipper
             let f x = expand gen winner (descendTo (t,ps) x)
             newSubForest <- forM [0..n] f
             let newTree = T.Node {T.rootLabel=(T.rootLabel t) , T.subForest=newSubForest}
-            pair <- readSTRef . fromJust . _weight . T.rootLabel $ newTree
+            pair <- readSTRef . getWeight $ newTree
             let newZipper = return $ (allTheWayBack (newTree,ps))
             mctsAlgorithm gen (iteration + 1) winner newZipper
         -- when reaching a node whose children's weights have already been
@@ -212,7 +216,7 @@ precondition tree
 -- if a move result in a loss in one, return True, otherwise return False
 isBlunder :: MCTree s -> Bool
 isBlunder (T.Node r sub) =
-  let moves = legalGridMoves (_lastPlayer r, _currentGrid r)
+  let moves = legalGridMoves (r^.lastPlayer, r^.currentGrid)
   in any isWon (fmap snd moves)
 
 getBestMove :: R.StdGen -> (Token, Grid Token) -> (Token, Grid Token)
@@ -224,6 +228,6 @@ getBestMove gen (opponent, g)
       -- otherwise, run the MCTS algorithm
       if length (T.subForest gameTree) == 1
         then do let uniqueMove = T.rootLabel $ (T.subForest gameTree) !! 0
-                return $ (_lastPlayer uniqueMove, _currentGrid uniqueMove)
+                return $ (uniqueMove^.lastPlayer, uniqueMove^.currentGrid)
         else do let gameZipper = return $ (gameTree, [])
                 mctsAlgorithm gen 0 (nextPlayer opponent) gameZipper
