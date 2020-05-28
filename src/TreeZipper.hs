@@ -35,7 +35,7 @@ allTheWayBack :: ZipNode a -> ZipNode a
 allTheWayBack (t,ps) =
   if length ps == 0
     then (t,ps)
-    else allTheWayBack $ stepBack (t,ps)
+    else allTheWayBack $! stepBack (t,ps)
 
 replaceNode :: ZipNode a -> a -> ZipNode a
 replaceNode (t,ps) new = (t',ps)
@@ -44,5 +44,5 @@ replaceNode (t,ps) new = (t',ps)
 -- apply a function to all children of the current position
 replaceSubForestBy :: (Tree a -> Tree a) -> ZipNode a -> ZipNode a
 replaceSubForestBy f (t,ps) = (t',ps)
-  where newForest = fmap f (T.subForest t)
+  where newForest = fmap f $! (T.subForest t)
         t' = T.Node {T.rootLabel=(T.rootLabel t) , T.subForest=newForest}

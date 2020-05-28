@@ -58,8 +58,8 @@ triplets (Grid a) =
 -- grids are over when a player wins or when the grid is full
 instance (Eq w, Winnable w) => Winnable (Grid w) where
   isWon (Grid a) =
-    let isTris x = isWon (head x) && all (==head x) (tail x)
-    in  True `elem` map (isTris) (triplets $ Grid a)
+    let isTris x = (isWon $! (head x)) && (all (==head x) $! (tail x))
+    in  (elem True) $! map (isTris) $! (triplets $ Grid a)
   isOver (Grid a) = isWon (Grid a) || all (isOver) a
 
 -- determine the winner for a single Grid, otherwise give Left False if the
@@ -71,10 +71,10 @@ gridStatus g
   | isWon g = Right winner
   | isOver g  = Left False  -- tied game
   | otherwise = Left True   -- ongoing game
-    where winner = head [head x | x <- triplets g, isOver (head x), all (==head x) (tail x)]
+    where winner = head [head x | x <- triplets g, (isOver $! (head x)), (all (==head x)) $! (tail x)]
 
 getStatuses :: (Eq w, Winnable w) => Match w -> Grid (Either Bool w)
-getStatuses m = fmap gridStatus (getGrids m)
+getStatuses m = fmap gridStatus $! (getGrids m)
 
 -- a match is won when the status of some triplet is all "Right w" for the
 -- same w
@@ -82,11 +82,11 @@ getStatuses m = fmap gridStatus (getGrids m)
 -- bigger grid
 instance (Eq w, Winnable w) => Winnable (Match w) where
   isWon m =
-    let x = triplets $ getStatuses m
+    let x = triplets $! getStatuses m
         isTris (y:ys) = isRight y && all (==y) ys
-    in  True `elem` map (isTris) x
+    in  (elem True) $! map (isTris) x
   isOver m =
-    let x = toList $ getStatuses m
+    let x = toList $! getStatuses m
     in  isWon m || not (any (== Left True) x)
 
 -- determine the winner for the whole Match, otherwise give Left False if the
@@ -95,7 +95,7 @@ instance (Eq w, Winnable w) => Winnable (Match w) where
 -- works properly only on legal positions (at most one winner)
 matchStatus :: (Winnable w, Eq w) => Match w -> Either Bool w
 matchStatus m
-  | isWon m = head [x | (x:xs) <- y, isRight x, all (==x) xs]
+  | isWon m = head [x | (x:xs) <- y, isRight $! x, all (==x) $! xs]
   | isOver m  = Left False  -- tied game
   | otherwise = Left True   -- ongoing game
-    where y = triplets $ getStatuses m
+    where y = triplets $! getStatuses m

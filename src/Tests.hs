@@ -21,6 +21,23 @@ gI' = toGrid [X,EM,O,EM,X,EM,O,EM,EM]  -- in progress
 gT = toGrid [O,X,O,O,O,X,X,O,X]        -- tied
 gT' = toGrid [X,X,O,O,O,X,X,O,O]       -- tied
 
+gM2 = (O, Just (Coord 1 1), matNew2)
+metNew2 = toGrid [g1,g2,g3,g4,g5,g6,g7,g8,g9]   -- won by O
+g1 = toGrid [O,O,O,EM,X,X,EM,EM,EM]   -- won by X
+g2 = toGrid [X,O,X,X,EM,EM,X,EM,X]   -- won by O
+g3 = toGrid [X,O,EM,EM,O,EM,O,X,EM]   -- won by X
+g4 = toGrid [EM,O,EM,O,X,O,EM,EM,X]     -- in progress
+g5 = toGrid [X,X,X,X,O,EM,O,EM,EM]   -- won by O
+g6 = toGrid [EM,O,EM,EM,EM,EM,X,X,X]   -- in progress
+g7 = toGrid [EM,O,EM,X,O,EM,X,O,EM]   -- in progress
+g8 = toGrid [O,EM,X,EM,O,EM,EM,EM,EM]   -- in progress
+g9 = toGrid [X,EM,O,EM,EM,O,EM,EM,O]   -- won by X
+
+g0 = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by X
+g1' = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by X
+g5' = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by O
+g6' = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- in progress
+
 mat0 = toMatch $ met0  -- won by X
 mat1 = toMatch $ met1  -- won by O
 mat2 = toMatch $ met2  -- in progress
@@ -42,6 +59,19 @@ met6 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
 met7 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
 met8 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
 met9 = toGrid [gI,gI,gI,gI,gI,gI,gI,gI,gI]
+
+metNew = toGrid [g0,g1',g2,g3,g4,g5',g6',g7,g8] -- in progress
+metNew0 = toGrid [g0,g1',g2,g3,g4,g5',g6,g7,g8] -- in progress
+metNew1 = toGrid [g0,g1,g2,g3,g4,g5,g6,g7,g8]  -- in progress
+matNew = toMatch metNew
+matNew0 = toMatch metNew0
+matNew1 = toMatch metNew1
+matNew2 = toMatch metNew2
+
+gM = (X, Nothing, matNew)
+gM0 = (O, Just (Coord 0 1), matNew0)
+gM1 = (X, Just (Coord 0 1), matNew1)
+
 
 move1 = Move (Coord 0 0) (Coord 0 0) X
 move2 = Move (Coord 2 2) (Coord 0 0) O
@@ -69,4 +99,5 @@ t n = fmap snd $ (T.levels $ unfoldTree playTTT (O,gG)) !! n
 main = do
   g <- R.newStdGen
   -- return $ simulationTTT g (O,gI)
-  return $ getBestMove g (X,gG)
+  -- return $ simulationUTTT g gM
+  return $ getBestMove g gM2
