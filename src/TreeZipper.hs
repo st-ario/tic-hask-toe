@@ -2,6 +2,8 @@ module TreeZipper where
 
 import           Data.Tree (Tree, Forest)
 import qualified Data.Tree as T
+import           Data.Vector (Vector)
+import qualified Data.Vector as V
 
 -- Zipper structure on Data.Tree
 
@@ -10,21 +12,23 @@ data Position a = Node { _leftForest :: Forest a -- forest to the left
                        , _parent :: a -- label of parent node
                        } deriving (Show, Eq)
 
-type ZipNode a = (Tree a, [Position a])
+type ZipNode a = (Tree a, Vector (Position a))
 
 depth :: ZipNode a -> Int
 depth (_,p) = length p
 
 stepBack :: ZipNode a -> ZipNode a
-stepBack (_,[]) = error "The root has no parent node"
-stepBack (t,(p:ps)) = (t',ps)
-  where newRoot = _parent p
+stepBack (t,vp)
+  | null vp = error "The root has no parent node"
+  | otherwise = (t', V.tail vp)
+  where p = V.head vp
+        newRoot = _parent p
         lF = _leftForest p
         rF = _rightForest p
         t' = T.Node newRoot (lF ++ [t] ++ rF)
 
 descendTo :: ZipNode a -> Int -> ZipNode a
-descendTo (t,ps) n = (t',(Node l r p):ps)
+descendTo (t,ps) n = (t',(Node l r p) `V.cons` ps)
   where sub = T.subForest t
         t' = sub !! n
         l = take n sub

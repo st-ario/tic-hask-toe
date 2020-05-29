@@ -21,6 +21,8 @@ import           Data.Either (fromRight, isRight, fromLeft, isLeft)
 import           Control.Monad (forM, forM_)
 import           Data.List.Extras.Argmax
 import           Data.List (elemIndices)
+import           Data.Vector (Vector)
+import qualified Data.Vector as V
 
 trd :: (a,b,c) -> c
 trd (_,_,x) = x
@@ -232,5 +234,5 @@ getBestMove gen (lp,lc,lm)
       if length (T.subForest gameTree) == 1
         then do let unique = T.rootLabel $ (T.subForest gameTree) !! 0
                 return $ (unique^.lastPlayer, unique^.lastMove, unique^.currentMatch)
-        else do let gameZipper = return $ (gameTree, [])
+        else do let gameZipper = return $ (gameTree, V.empty)
                 mctsAlgorithm gen 0 (nextPlayer lp) $! gameZipper
