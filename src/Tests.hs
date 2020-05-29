@@ -9,34 +9,35 @@ import MCTS
 import           Data.Tree (Tree, Forest, unfoldTree, unfoldForest)
 import qualified Data.Tree as T
 import qualified System.Random as R
-import Control.Monad
+import           Control.Monad
+import           Data.Vector(fromList)
 
-gX = toGrid [X,X,X,EM,O,O,EM,EM,O]     -- won by X
-gX' = toGrid [EM,O,O,X,X,X,EM,O,X]     -- won by X
-gX'' = toGrid [EM,X,EM,EM,X,O,EM,X,O]  -- won by X
-gO = toGrid [O,X,EM,X,O,EM,X,X,O]      -- won by O
-gO' = toGrid [EM,O,X,X,O,X,EM,O,EM]    -- won by O
-gI = toGrid $ take 9 $ cycle [EM]      -- in progress
-gI' = toGrid [X,EM,O,EM,X,EM,O,EM,EM]  -- in progress
-gT = toGrid [O,X,O,O,O,X,X,O,X]        -- tied
-gT' = toGrid [X,X,O,O,O,X,X,O,O]       -- tied
+gX = toGrid $ fromList [X,X,X,EM,O,O,EM,EM,O]     -- won by X
+gX' = toGrid $ fromList [EM,O,O,X,X,X,EM,O,X]     -- won by X
+gX'' = toGrid $ fromList [EM,X,EM,EM,X,O,EM,X,O]  -- won by X
+gO = toGrid $ fromList [O,X,EM,X,O,EM,X,X,O]      -- won by O
+gO' = toGrid $ fromList [EM,O,X,X,O,X,EM,O,EM]    -- won by O
+gI = toGrid $ fromList $ take 9 $ cycle $ [EM]      -- in progress
+gI' = toGrid $ fromList [X,EM,O,EM,X,EM,O,EM,EM]  -- in progress
+gT = toGrid $ fromList [O,X,O,O,O,X,X,O,X]        -- tied
+gT' = toGrid $ fromList [X,X,O,O,O,X,X,O,O]       -- tied
 
 gM2 = (O, Just (Coord 1 1), matNew2)
-metNew2 = toGrid [g1,g2,g3,g4,g5,g6,g7,g8,g9]   -- won by O
-g1 = toGrid [O,O,O,EM,X,X,EM,EM,EM]   -- won by X
-g2 = toGrid [X,O,X,X,EM,EM,X,EM,X]   -- won by O
-g3 = toGrid [X,O,EM,EM,O,EM,O,X,EM]   -- won by X
-g4 = toGrid [EM,O,EM,O,X,O,EM,EM,X]     -- in progress
-g5 = toGrid [X,X,X,X,O,EM,O,EM,EM]   -- won by O
-g6 = toGrid [EM,O,EM,EM,EM,EM,X,X,X]   -- in progress
-g7 = toGrid [EM,O,EM,X,O,EM,X,O,EM]   -- in progress
-g8 = toGrid [O,EM,X,EM,O,EM,EM,EM,EM]   -- in progress
-g9 = toGrid [X,EM,O,EM,EM,O,EM,EM,O]   -- won by X
+metNew2 = toGrid $ fromList [g1,g2,g3,g4,g5,g6,g7,g8,g9]   -- won by O
+g1 = toGrid $ fromList [O,O,O,EM,X,X,EM,EM,EM]   -- won by X
+g2 = toGrid $ fromList [X,O,X,X,EM,EM,X,EM,X]   -- won by O
+g3 = toGrid $ fromList [X,O,EM,EM,O,EM,O,X,EM]   -- won by X
+g4 = toGrid $ fromList [EM,O,EM,O,X,O,EM,EM,X]     -- in progress
+g5 = toGrid $ fromList [X,X,X,X,O,EM,O,EM,EM]   -- won by O
+g6 = toGrid $ fromList [EM,O,EM,EM,EM,EM,X,X,X]   -- in progress
+g7 = toGrid $ fromList [EM,O,EM,X,O,EM,X,O,EM]   -- in progress
+g8 = toGrid $ fromList [O,EM,X,EM,O,EM,EM,EM,EM]   -- in progress
+g9 = toGrid $ fromList [X,EM,O,EM,EM,O,EM,EM,O]   -- won by X
 
-g0 = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by X
-g1' = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by X
-g5' = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by O
-g6' = toGrid [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- in progress
+g0 = toGrid $ fromList [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by X
+g1' = toGrid $ fromList [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by X
+g5' = toGrid $ fromList [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- won by O
+g6' = toGrid $ fromList [EM,EM,EM,EM,EM,EM,EM,EM,EM]   -- in progress
 
 mat0 = toMatch $ met0  -- won by X
 mat1 = toMatch $ met1  -- won by O
@@ -49,20 +50,20 @@ mat7 = toMatch $ met7
 mat8 = toMatch $ met8
 mat9 = toMatch $ met9 -- empty game
 
-met0 = toGrid [gX,gI,gI',gT,gX',gO,gO',gX,gX']  -- won by X
-met1 = toGrid [gT,gI,gO,gT',gO,gX,gO,gT,gX']    -- won by O
-met2 = toGrid [gX,gI,gI',gT,gO,gI,gT,gI,gO']    -- in progress
-met3 = toGrid [gX,gX',gT',gT,gO,gT,gO',gX,gX']  -- tied
-met4 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
-met5 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
-met6 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
-met7 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
-met8 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
-met9 = toGrid [gI,gI,gI,gI,gI,gI,gI,gI,gI]
+met0 = toGrid $ fromList [gX,gI,gI',gT,gX',gO,gO',gX,gX']  -- won by X
+met1 = toGrid $ fromList [gT,gI,gO,gT',gO,gX,gO,gT,gX']    -- won by O
+met2 = toGrid $ fromList [gX,gI,gI',gT,gO,gI,gT,gI,gO']    -- in progress
+met3 = toGrid $ fromList [gX,gX',gT',gT,gO,gT,gO',gX,gX']  -- tied
+met4 = toGrid $ fromList [gX,gI,gI',gT,gO,gI,gX,gX,gX']
+met5 = toGrid $ fromList [gX,gI,gI',gT,gO,gI,gX,gX,gX']
+met6 = toGrid $ fromList [gX,gI,gI',gT,gO,gI,gX,gX,gX']
+met7 = toGrid $ fromList [gX,gI,gI',gT,gO,gI,gX,gX,gX']
+met8 = toGrid $ fromList [gX,gI,gI',gT,gO,gI,gX,gX,gX']
+met9 = toGrid $ fromList [gI,gI,gI,gI,gI,gI,gI,gI,gI]
 
-metNew = toGrid [gI,gI,gI,gI,gI,gI,gI,gI,gI] -- in progress
-metNew0 = toGrid [g0,g1',g2,g3,g4,g5',g6,g7,g8] -- in progress
-metNew1 = toGrid [g0,g1,g2,g3,g4,g5,g6,g7,g8]  -- in progress
+metNew = toGrid $ fromList [gI,gI,gI,gI,gI,gI,gI,gI,gI] -- in progress
+metNew0 = toGrid $ fromList [g0,g1',g2,g3,g4,g5',g6,g7,g8] -- in progress
+metNew1 = toGrid $ fromList [g0,g1,g2,g3,g4,g5,g6,g7,g8]  -- in progress
 matNew = toMatch metNew
 matNew0 = toMatch metNew0
 matNew1 = toMatch metNew1
@@ -82,17 +83,7 @@ move6 = Move (Coord 2 2) (Coord 2 1) O
 move7 = Move (Coord 1 0) (Coord 1 2) X
 move8 = Move (Coord 0 2) (Coord 1 2) O
 
-fT1 = (T.Node 1 [])
-fT2 = (T.Node 2 [fT1])
-fT3 = (T.Node 3 [])
-fT4 = (T.Node 4 [])
-fT5 = (T.Node 5 [fT4])
-fT6 = (T.Node 6 [])
-fT7 = (T.Node 7 [fT3,fT2])
-fT8 = (T.Node 8 [])
-fT9 = (T.Node 9 [fT8,fT7,fT6,fT5])
-
-gG = toGrid [O,EM,EM,EM,X,EM,EM,EM,X]
+gG = toGrid $ fromList [O,EM,EM,EM,X,EM,EM,EM,X]
 
 t n = fmap snd $ (T.levels $ unfoldTree playTTT (O,gG)) !! n
 

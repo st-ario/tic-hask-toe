@@ -10,11 +10,12 @@ import qualified Data.Tree as T
 import qualified System.Random as R
 import           Control.Monad
 import           Data.Char (digitToInt)
+import qualified Data.Vector as V
 
 clear = putStrLn "\ESC[2J"
 
-emptyGrid = toGrid $ take 9 $ cycle [EM] 
-emptyMatch = toMatch $ toGrid $ take 9 $ cycle [emptyGrid]
+emptyGrid = toGrid $ V.replicate 9 EM
+emptyMatch = toMatch $ toGrid $! V.replicate 9 emptyGrid
 
 validInputs = replicateM 4 ['0'..'2']
 

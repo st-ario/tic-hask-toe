@@ -9,6 +9,8 @@ import           Control.Lens
 import           Data.Tree (Tree, Forest, unfoldTree)
 import qualified Data.Tree as T
 import           Data.Maybe (isNothing, fromJust)
+import           Data.Vector(Vector, (!), singleton)
+import qualified Data.Vector as V
 
 data Coord = Coord { _row :: Int
                    , _col :: Int
@@ -39,7 +41,7 @@ nextPlayer O  = X
 -- e.g. the element in row 2 and column 1 is the
 -- 2*(3^1) + 1*(3^0) = 7 -th element of the list
 getGridEl :: Coord -> Grid w -> w
-getGridEl c g = (toList g !! pos)
+getGridEl c g = (toList g ! pos)
   where m = c^.row
         n = c^.col
         pos = (3*m + n)
@@ -48,7 +50,7 @@ getGridEl c g = (toList g !! pos)
 setGridEl :: Coord -> w -> Grid w -> Grid w
 setGridEl c w grid
   | m >= 3 || n >= 3 = error "Coordinates in a Grid must be in {0, 1, 2}"
-  | otherwise = toGrid $ (take pos xs) ++ [w] ++ drop (pos+1) xs
+  | otherwise = toGrid $ (V.take pos xs) V.++ (singleton w) V.++ V.drop (pos+1) xs
     where m = c^.row
           n = c^.col
           pos = (3*m + n)
@@ -70,7 +72,7 @@ setMatchEl move match
           w = move^.agent
           pos = (3*a + b)
           outerGrid = getGrids $! match
-          newInnerGrid = setGridEl (Coord m n) w $! (toList outerGrid)!!pos
+          newInnerGrid = setGridEl (Coord m n) w $! (toList outerGrid)!pos
 
 -- given the last player's token and the actual grid position, return all legal
 -- positions achieveable from it
@@ -125,4 +127,4 @@ playMatchFrom = unfoldTree playUTTT
 
 -- game tree of a single tic-tac-toe match
 ordinaryGameTree = unfoldTree playTTT (O,gI)
-  where gI = toGrid $ take 9 $ cycle [EM]
+  where gI = toGrid $ V.replicate 9 EM

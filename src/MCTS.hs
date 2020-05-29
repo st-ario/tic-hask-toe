@@ -105,7 +105,7 @@ setToZero t = do
 -- determine if the grid is won, tied or lost by the given player
 -- and assigns weights accordingly
 -- works properly only if called on a game that is over
-matchOutcome :: (Eq w, Winnable w) =>  w -> Match w -> Double
+matchOutcome :: Token -> Match Token -> Double
 matchOutcome p m
   | isLeft status = tieWeight
   | p == (getWinner $ status) = winWeight
@@ -140,12 +140,12 @@ bestChild gen t = do
   let refValues = [x | x <- fmap getWeight $! (T.subForest t)]
   valuesList <- (forM $! refValues) readSTRef
   trace ("the weigh of the parent is " ++ show parentN) $ pure ()
-  trace ("the weights of the children are " ++ show valuesList) $ pure ()
+  -- trace ("the weights of the children are " ++ show valuesList) $ pure ()
   let toMaximize (v,c) = ucb v c $! parentN
   let bestWeight = argmax toMaximize $! valuesList
   let positions = (elemIndices $! bestWeight) valuesList
   trace ("ucb is maximized by the ones in position " ++ show positions) $ return ()
-  trace ("the UCBs are " ++ show (fmap toMaximize valuesList)) $ return ()
+  -- trace ("the UCBs are " ++ show (fmap toMaximize valuesList)) $ return ()
   let len = (length $! positions) - 1
   if len == 0
     then return (positions !! 0)

@@ -1,10 +1,12 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Game where
 
-import Data.Either (isRight, isLeft, fromRight)
-import Data.Maybe (fromJust, isNothing)
-import Data.List (findIndex)
+import           Data.Either (isRight,fromRight)
+import           Data.Maybe (fromJust, isNothing)
+import           Data.Vector (Vector,(!),cons,empty,singleton)
+import qualified Data.Vector as V
 
 -- the quality of a token being empty, or a game being in progress is
 -- different from being resp. X/Y or won/tied
@@ -24,16 +26,19 @@ instance Winnable Token where
   isWon  = isOver
 
 -- grids are just lists, the type constructor ensures their length is 9
-newtype Grid w = Grid { toList :: [w]} deriving Eq
+newtype Grid w = Grid { toList :: Vector w } deriving Eq
 
-toGrid :: [w] -> Grid w
-toGrid a =
-  if length a == 9
+toGrid :: Vector w -> Grid w
+toGrid a = Grid a
+{--
+  if V.length a == 9
     then Grid a
     else error "A Grid must have 9 elements"
+--}
 
 instance Functor Grid where
-  fmap f grid = toGrid $ map f $ toList grid
+  -- fmap f grid = toGrid $ fmap f $ toList grid
+  fmap f (Grid a) = Grid (V.map f a)
 
 -- The conditions for a Match to be won are different from the ones of Grid,
 -- and it also needs a different instance of Show
@@ -42,95 +47,99 @@ newtype Match w = Match { getGrids :: Grid (Grid w) } deriving Eq
 toMatch :: Grid (Grid w) -> Match w
 toMatch m = Match m
 
--- create a list picking the values of rows, columns and diagonals
--- (ugly, but more performant than last version)
-triplets :: Grid w -> [[w]]
-triplets (Grid a) =
-  [ -- rows
-    [r , s, t]
-   ,[u , v, w]
-   ,[x , y, z]
-    -- colums
-   ,[r, u, x]
-   ,[s, v, y]
-   ,[t, w, z]
-    -- diagonals
-   ,[r, v, z]
-   ,[t, v, x]
-  ]
-  where r = (a!!0)
-        s = (a!!1)
-        t = (a!!2)
-        u = (a!!3)
-        v = (a!!4)
-        w = (a!!5)
-        x = (a!!6)
-        y = (a!!7)
-        z = (a!!8)
+hasWinningTriplets :: (Eq w, Winnable w) => Grid w -> Bool
+hasWinningTriplets (Grid a) =
+  let r = (a!0)
+      s = (a!1)
+      t = (a!2)
+      u = (a!3)
+      v = (a!4)
+      w = (a!5)
+      x = (a!6)
+      y = (a!7)
+      z = (a!8)
+      cv = isWon v
+      cx = isWon x
+      ct = isWon t
+  -- rows 
+  in (ct && r == s && r == t) ||
+     (cv && u == v && u == w) ||
+     (cx && x == y && x == z) ||
+     -- columns
+     (cx && r == u && r == x) ||
+     (cv && s == v && s == y) ||
+     (ct && t == w && t == z) ||
+     -- diagonals
+     (cv && r == v && r == z) ||
+     (cv && t == v && t == x)
 
--- auxiliary function to improve performance
-isTris :: (Eq w, Winnable w) => [w] -> Bool
-isTris (a:b:c:[]) = isWon a && a == b && a == c
-isTris _ = error "Not a triplet"
+getWinner :: Grid Token -> Token
+getWinner (Grid a) =
+  let r = (a!0)
+      s = (a!1)
+      t = (a!2)
+      u = (a!3)
+      v = (a!4)
+      w = (a!5)
+      x = (a!6)
+      y = (a!7)
+      z = (a!8)
+      cv = isWon v
+      cx = isWon x
+      ct = isWon t
+  in if
+        -- rows
+        | (ct && r == s && r == t) -> r
+        | (cv && u == v && u == w) -> u
+        | (cx && x == y && x == z) -> x
+        -- columns             
+        | (cx && r == u && r == x) -> r
+        | (cv && s == v && s == y) -> s
+        | (ct && t == w && t == z) -> t
+        -- diagonals               
+        | (cv && r == v && r == z) -> r
+        | (cv && t == v && t == x) -> t
+        | otherwise -> EM
 
 -- grids are won when there's a winning triplet
 -- grids are over when a player wins or when the grid is full
 instance (Eq w, Winnable w) => Winnable (Grid w) where
-  isWon grid = any isTris $! triplets grid
-  isOver (Grid a) = all isOver a || isWon (Grid a)
+  isWon grid = hasWinningTriplets grid
+  isOver (Grid a) = V.all isOver a || isWon (Grid a)
 
 -- determine the winner for a single Grid, otherwise give Left False if the
 -- game is tied and Left True if it is still ongoing
 --
 -- works properly only on legal positions (at most one winner)
 -- ugly but performant
-gridStatus :: (Winnable w, Eq w) => Grid w -> Either Bool w
-gridStatus grid =
-  let index = findIndex isTris $ triplets grid
-      winner = head $ (triplets grid) !! (fromJust index)
-  in if isOver grid
-       then if isNothing index
-              then Left False -- tied game
-              else Right winner -- game won by winner
-       else Left True --ongoing game
+gridStatus :: Grid Token -> Either Bool Token
+gridStatus grid@(Grid a)
+  | isWon grid = Right $! getWinner grid
+  | V.all isOver a = Left False -- tied game
+  | otherwise = Left True -- ongoing game
 
-getStatuses :: (Eq w, Winnable w) => Match w -> Grid (Either Bool w)
-getStatuses m = fmap gridStatus $! (getGrids m)
+getStatuses :: Match Token -> Grid (Either Bool Token)
+getStatuses (Match grids) = fmap gridStatus grids
 
--- this is a bit unfortunate, but works well
-instance (Winnable w) => Winnable (Either Bool w) where
-  isOver (Left True) = False -- this is ongoing
-  isOver (Left False) = True  -- this is tied
-  isOver (Right w) = isOver w
-  isWon (Left True) = False
-  isWon (Left False) = False
-  isWon (Right w) = isWon w
+matchReduction :: Match Token -> Grid Token
+matchReduction m = fmap (fromRight EM) $! getStatuses m
 
 -- a match is won when the status of some triplet is all "Right w" for the
 -- same w
 -- a match is over when is won or when there is no ongoing game in the
 -- bigger grid
-instance (Eq w, Winnable w) => Winnable (Match w) where
-  isWon m =
-    let (Grid lStatuses) = getStatuses m
-        x = triplets (Grid lStatuses)
-        winningTriplets = filter (\u -> isRight (head u) && isTris u) $ x
-    in any isRight lStatuses && winningTriplets /= []
+instance Winnable (Match Token) where
+  isWon m = hasWinningTriplets $! matchReduction m
   isOver m =
     let x = toList $! getStatuses m
-    in  not (any (== Left True) x) || isWon m
+    in  not (V.any (== Left True) x) || isWon m
 
 -- determine the winner for the whole Match, otherwise give Left False if the
 -- game is tied and Left True if it is still ongoing
 --
 -- works properly only on legal positions (at most one winner)
-matchStatus :: (Winnable w, Eq w) => Match w -> Either Bool w
-matchStatus m =
-  let (Grid lStatuses) = getStatuses m
-      x = triplets (Grid lStatuses)
-      winningTriplets = filter (\u -> isRight (head u) && isTris u) $ x
-  in if any isRight lStatuses && winningTriplets /= []
-       then head (head winningTriplets)  -- return Right winner
-       else if isOver m
-              then Left False -- tied Game
-              else Left True  -- ongoing Game
+matchStatus :: Match Token -> Either Bool Token
+matchStatus m
+  | isWon m = Right $! getWinner $! matchReduction m
+  | V.any (== Left True) (toList $! getStatuses m) = Left True -- ongoing
+  | otherwise = Left False -- tied

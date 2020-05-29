@@ -32,7 +32,7 @@ trd (_,_,x) = x
 simulationTTT :: R.StdGen -> (Token, Grid Token) -> (Token, Grid Token)
 simulationTTT gen state
   | isOver (snd state) = state
-  | otherwise = simulationTTT newGen (nextMoves !! rnd)
+  | otherwise = simulationTTT newGen (nextMoves ! rnd)
     where nextMoves = legalGridMoves state
           len = length nextMoves - 1
           (rnd,newGen) = R.randomR (0, len) gen
@@ -42,7 +42,7 @@ simulationTTT gen state
 simulationUTTT :: R.StdGen -> (Token, Maybe Coord, Match Token) -> (Token, Maybe Coord, Match Token)
 simulationUTTT gen state
   | isOver (trd state) = state
-  | otherwise = simulationUTTT newGen (nextMoves !! rnd)
+  | otherwise = simulationUTTT newGen (nextMoves ! rnd)
     where nextMoves = legalMatchMoves state
           len = length nextMoves - 1
           (rnd,newGen) = R.randomR (0, len) gen
@@ -159,10 +159,10 @@ bestChild gen t = do
   -- trace ("the UCBs are " ++ show (fmap toMaximize valuesList)) $ return ()
   let len = length positions - 1
   if len == 0
-    then return (positions !! 0)
+    then return (positions ! 0)
     else do let r = fst $ R.randomR (0,len) gen
-            -- trace ("let's pick " ++ show (positions !! r)) $ return ()
-            return (positions !! r)
+            -- trace ("let's pick " ++ show (positions ! r)) $ return ()
+            return (positions ! r)
 
 expand :: R.StdGen -> Token -> ZipNode (MCNode' s) -> ST s (MCTree s)
 expand gen winner (t,ps) = do
@@ -180,7 +180,7 @@ mctsAlgorithm gen iteration winner wZipper
   | iteration >= computationalBudget = do
       (t,ps) <- wZipper
       n <- bestChild gen t
-      let child = T.rootLabel (T.subForest t !! n)
+      let child = T.rootLabel (T.subForest t ! n)
       return (child^.lastPlayer, child^.currentGrid)
   | otherwise = do
       (t,ps) <- wZipper
@@ -194,7 +194,7 @@ mctsAlgorithm gen iteration winner wZipper
         -- when reaching a node whose children's weights are not initialized,
         -- initialize all children, run simulations and backpropagate once for
         -- each of them, then restart from root
-        | isNothing $ _weight $ T.rootLabel (T.subForest t !! 0) -> do
+        | isNothing $ _weight $ T.rootLabel (T.subForest t ! 0) -> do
             let n = length (T.subForest t) -1
             let f x = expand gen winner (descendTo (t,ps) x)
             newSubForest <- forM [0..n] f
@@ -234,7 +234,7 @@ getBestMove gen (opponent, g)
       -- if after conditioning there is only one move available, just return it
       -- otherwise, run the MCTS algorithm
       if length (T.subForest gameTree) == 1
-        then do let uniqueMove = T.rootLabel $ (T.subForest gameTree) !! 0
+        then do let uniqueMove = T.rootLabel $ (T.subForest gameTree) ! 0
                 return $ (uniqueMove^.lastPlayer, uniqueMove^.currentGrid)
         else do let gameZipper = return $ (gameTree, [])
                 mctsAlgorithm gen 0 (nextPlayer opponent) gameZipper
