@@ -81,8 +81,8 @@ tieWeight   = 0
 winWeight   = 1
 lossWeight  = -1
 --ucbConst    = 1 * sqrt(2)
-ucbConst    = 1.1
-computationalBudget = 100 :: Integer
+ucbConst    = 1.01 * sqrt(2)
+computationalBudget = 4000 :: Integer
 -- tie = 2 win = 2 loss = -2 C = 1.2 OK for UCB1, TTT
 -- a bit inconsistent, sometimes loses against optimal play
 
@@ -105,13 +105,12 @@ setToZero t = do
 -- determine if the grid is won, tied or lost by the given player
 -- and assigns weights accordingly
 -- works properly only if called on a game that is over
-gridOutcome :: (Eq w, Winnable w) => w -> Match w -> Double
-gridOutcome p m
+matchOutcome :: (Eq w, Winnable w) =>  w -> Match w -> Double
+matchOutcome p m
   | isLeft status = tieWeight
-  | p == (getWinner . gridStatus . getWinner $ status) = winWeight
+  | p == (getWinner $ status) = winWeight
   | otherwise = lossWeight
-  where g = getGrids m
-        status = gridStatus g
+  where status = matchStatus m
         getWinner = fromRight undefined
 
 -- Upper Confidence Bound formula
@@ -130,7 +129,7 @@ backprop (t,ps) diff = do
   modifySTRef' (getWeight t) $! incr
   if length ps == 0
     then return ()
-    else (backprop $! stepBack (t,ps)) (-diff)
+    else (backprop $! stepBack (t,ps)) $! (-diff)
 
 -- returns the index of a child maximizing ucb
 -- if multiple children maximize ucb, pick one randomly
@@ -159,7 +158,7 @@ expand gen winner (t,ps) = do
   newTree <- setToZero $ return t
   let state = T.rootLabel $! newTree
   let result = simulationUTTT gen $! (state^.lastPlayer, state^.lastMove, state^.currentMatch)
-  let diff = gridOutcome winner $! (trd result)
+  let diff = matchOutcome winner $! (trd result)
   if winner == state^.lastPlayer
     then backprop (newTree, ps) $! diff
     else backprop (newTree, ps) $! (-diff)
@@ -179,7 +178,7 @@ mctsAlgorithm gen iteration winner wZipper
       if
         -- when reaching a leaf of the game tree, backpropagate and restart from root
         | length (T.subForest t) == 0 -> do
-            let diff = gridOutcome winner $! (_currentMatch . T.rootLabel $ t)
+            let diff = matchOutcome winner $! (_currentMatch . T.rootLabel $ t)
             if winner == (_lastPlayer . T.rootLabel $ t)
               then backprop (t,ps) $! diff
               else backprop (t,ps) $! (-diff)

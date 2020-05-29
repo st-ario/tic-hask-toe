@@ -60,7 +60,7 @@ met7 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
 met8 = toGrid [gX,gI,gI',gT,gO,gI,gX,gX,gX']
 met9 = toGrid [gI,gI,gI,gI,gI,gI,gI,gI,gI]
 
-metNew = toGrid [g0,g1',g2,g3,g4,g5',g6',g7,g8] -- in progress
+metNew = toGrid [gI,gI,gI,gI,gI,gI,gI,gI,gI] -- in progress
 metNew0 = toGrid [g0,g1',g2,g3,g4,g5',g6,g7,g8] -- in progress
 metNew1 = toGrid [g0,g1,g2,g3,g4,g5,g6,g7,g8]  -- in progress
 matNew = toMatch metNew
@@ -68,7 +68,7 @@ matNew0 = toMatch metNew0
 matNew1 = toMatch metNew1
 matNew2 = toMatch metNew2
 
-gM = (X, Nothing, matNew)
+gM = (O, Nothing, matNew)
 gM0 = (O, Just (Coord 0 1), matNew0)
 gM1 = (X, Just (Coord 0 1), matNew1)
 
