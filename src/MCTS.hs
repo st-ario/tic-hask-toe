@@ -17,7 +17,7 @@ import           Data.Tree (Tree, Forest, unfoldTree)
 import qualified Data.Tree as T
 import           Debug.Trace (trace)
 import           Data.Maybe (isNothing, fromJust)
-import           Data.Either (fromRight, fromLeft, isLeft)
+import           Data.Either (fromRight, isRight, fromLeft, isLeft)
 import           Control.Monad (forM, forM_)
 import           Data.List.Extras.Argmax
 import           Data.List (elemIndices)
@@ -66,11 +66,12 @@ unfoldGame (lp,lc,lm) = return $! unfoldTree seedGrid $ MCN lp lc lm Nothing
 -- ultimate tic-tac-toe game randomly until the end
 simulationUTTT :: R.StdGen -> (Token, Maybe Coord, Match Token) -> (Token, Maybe Coord, Match Token)
 simulationUTTT gen state
-  | isOver (trd $! state) = state
+  | outcome /= Left True = state
   | otherwise = simulationUTTT newGen $! (nextMoves !! rnd)
     where nextMoves = legalMatchMoves $! state
           len = length nextMoves - 1
           (rnd,newGen) = (R.randomR $! (0, len)) $! gen
+          outcome = matchStatus $! (trd $! state)
 
 -- ###################  Monte Carlo Tree Search Algorithm ######################
 -- NB: ZipNode (MCNode' s) = (MCTree s, [Position (MCNode' s)])
@@ -219,11 +220,11 @@ precondition tree
 isBlunder :: MCTree s -> Bool
 isBlunder (T.Node r sub) =
   let moves = legalMatchMoves $! (r^.lastPlayer, r^.lastMove, r^.currentMatch)
-  in any isWon $! (fmap trd moves)
+  in any isRight $! fmap matchStatus $! (fmap trd $! moves)
 
 getBestMove :: R.StdGen -> (Token, Maybe Coord, Match Token) -> (Token, Maybe Coord, Match Token)
 getBestMove gen (lp,lc,lm)
-  | isOver lm = error "No legal moves available"
+  | matchStatus lm /= Left True = error "No legal moves available"
   | otherwise = runST $ do
       gameTree <- setToZero $! fmap precondition $! unfoldGame (lp,lc,lm)
       -- if after conditioning there is only one move available, just return it

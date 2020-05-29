@@ -54,10 +54,10 @@ setGridEl c w (Grid xs) =
           n = c^.col
           pos = (3*m + n)
 
--- return all the coordinates of slots that are not over
-ongoingSlots :: (Winnable w) => Grid w -> [Coord]
+-- return all the coordinates of slots that are ongoing
+ongoingSlots :: Grid (Either Bool Token) -> [Coord]
 ongoingSlots g = [ (Coord m n) | m <- [0..2], n <- [0..2],
-                  not(isOver $! getGridEl (Coord m n) g)]
+                  Left True == (getGridEl (Coord m n) $! g)]
 
 setMatchEl :: Move -> Match Token -> Match Token
 setMatchEl move (Match outerGrid@(Grid innergrid)) =
@@ -75,37 +75,39 @@ setMatchEl move (Match outerGrid@(Grid innergrid)) =
 legalGridMoves :: (Token, Grid Token) -> [(Token, Grid Token)]
 legalGridMoves (lastPlayer,g)
   | lastPlayer == EM = error "EM can't move"
-  | isOver g = []
-  | otherwise = [(p, setGridEl coord p g) | coord <- ongoingSlots g]
+  | s /= Left True = []
+  | otherwise = [(p, setGridEl coord p g) | coord <- ongoingSlots $! fmap winStatus $! g]
     where p = nextPlayer lastPlayer
+          s = gridStatus g
 
 -- given the last player's token, the coordinate of the last move, and the
 -- actual game state, return all legal positions achievable from it
 legalMatchMoves :: (Token, Maybe Coord, Match Token) -> [(Token, Maybe Coord, Match Token)]
-legalMatchMoves (lastPlayer, lastCoord, state)
+legalMatchMoves (lastPlayer, lastCoord, state@(Match gameGrids))
   | lastPlayer == EM = error "EM can't move"
-  | isOver $! state = []
+  | s /= Left True = []
   | otherwise =
       -- if the subgrid corresponding to the last move is over, the legal
       -- moves are the one taking place in any subgrid that is not over,
       -- in any spot that is empty
       -- otherwise, the legal moves are the one taking place in any spot that
       -- is empty
-      if isNothing lastCoord || isOver targetGrid
-        then targetGridBusy p state
-        else [(p, Just inner, (updateState (fromJust lastCoord) $! inner)) | inner <- ongoingSlots $! targetGrid]
+      if isNothing lastCoord || sTarGr /= Left True
+        then targetGridBusy p $! state
+        else [(p, Just inner, (updateState (fromJust lastCoord) $! inner)) | inner <- ongoingSlots $! fmap winStatus $! targetGrid]
     where p = nextPlayer lastPlayer
-          gameGrids = getGrids state
+          s = matchStatus $! state
           targetGrid = getGridEl (fromJust lastCoord) $! gameGrids
-          updateState c d = setMatchEl (Move c d p) state
+          sTarGr = gridStatus $! targetGrid
+          updateState c d = setMatchEl (Move c d p) $! state
 
 -- auxiliary function, for legalMatchMoves
 targetGridBusy :: Token -> Match Token -> [(Token, Maybe Coord, Match Token)]
 targetGridBusy p state@(Match gameGrids) =
-  let availableSubGrids = ongoingSlots $! gameGrids
+  let availableSubGrids = ongoingSlots $! fmap gridStatus $! gameGrids
       goodPairs = [(outerCoord, innerCoord) |
         outerCoord <- availableSubGrids,
-        innerCoord <- ongoingSlots $! getGridEl outerCoord gameGrids]
+        innerCoord <- ongoingSlots $! fmap winStatus $! getGridEl outerCoord gameGrids]
       updateState c d = setMatchEl (Move c d p) $! state
   in [(p,Just $! inner,(updateState $! outer) inner) | (outer, inner) <- goodPairs]
 
