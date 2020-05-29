@@ -41,8 +41,10 @@ replaceNode :: ZipNode a -> a -> ZipNode a
 replaceNode (t,ps) new = (t',ps)
   where t' = T.Node {T.rootLabel=new , T.subForest=(T.subForest t)}
 
+{--
 -- apply a function to all children of the current position
 replaceSubForestBy :: (Tree a -> Tree a) -> ZipNode a -> ZipNode a
 replaceSubForestBy f (t,ps) = (t',ps)
   where newForest = fmap f $! (T.subForest t)
         t' = T.Node {T.rootLabel=(T.rootLabel t) , T.subForest=newForest}
+--}

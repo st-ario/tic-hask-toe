@@ -25,22 +25,10 @@ import           Data.List (elemIndices)
 trd :: (a,b,c) -> c
 trd (_,_,x) = x
 
--- ############################  Simulation Steps  #############################
-
--- given an initial state (last player, current board) play an
--- ultimate tic-tac-toe game randomly until the end
-simulationUTTT :: R.StdGen -> (Token, Maybe Coord, Match Token) -> (Token, Maybe Coord, Match Token)
-simulationUTTT gen state
-  | isOver (trd state) = state
-  | otherwise = simulationUTTT newGen $! (nextMoves !! rnd)
-    where nextMoves = legalMatchMoves state
-          len = length nextMoves - 1
-          (rnd,newGen) = (R.randomR $! (0, len)) $! gen
-
 -- ###################  Monte Carlo Tree Data Structures #######################
 
 type ValueOfNode = Double
-type NumberOfVisits = Integer
+type NumberOfVisits = Int
 type Weight s = Maybe (STRef s (ValueOfNode,NumberOfVisits))
 
 data MCNode s = MCN { _lastPlayer :: !Token
@@ -61,7 +49,6 @@ getWeight = fromJust . _weight . T.rootLabel
 legalNodes :: MCNode s -> [MCNode s]
 legalNodes (MCN lp lc lm _)
   | lp == EM = error "EM can't move"
-  | isOver lm = []
   | otherwise = [ MCN p c m Nothing |
                   (p, c, m) <- legalMatchMoves (lp, lc, lm)]
 
@@ -73,6 +60,18 @@ seedGrid node = (node, legalNodes node)
 unfoldGame :: (Token, Maybe Coord, Match Token) -> ST s (MCTree s)
 unfoldGame (lp,lc,lm) = return $! unfoldTree seedGrid $ MCN lp lc lm Nothing
 
+-- ############################  Simulation Steps  #############################
+
+-- given an initial state (last player, current board) play an
+-- ultimate tic-tac-toe game randomly until the end
+simulationUTTT :: R.StdGen -> (Token, Maybe Coord, Match Token) -> (Token, Maybe Coord, Match Token)
+simulationUTTT gen state
+  | isOver (trd $! state) = state
+  | otherwise = simulationUTTT newGen $! (nextMoves !! rnd)
+    where nextMoves = legalMatchMoves $! state
+          len = length nextMoves - 1
+          (rnd,newGen) = (R.randomR $! (0, len)) $! gen
+
 -- ###################  Monte Carlo Tree Search Algorithm ######################
 -- NB: ZipNode (MCNode' s) = (MCTree s, [Position (MCNode' s)])
 
@@ -82,7 +81,7 @@ winWeight   = 1
 lossWeight  = -1
 --ucbConst    = 1 * sqrt(2)
 ucbConst    = 1.01 * sqrt(2)
-computationalBudget = 4000 :: Integer
+computationalBudget = 4000 :: Int
 -- tie = 2 win = 2 loss = -2 C = 1.2 OK for UCB1, TTT
 -- a bit inconsistent, sometimes loses against optimal play
 
@@ -108,19 +107,19 @@ setToZero t = do
 matchOutcome :: Token -> Match Token -> Double
 matchOutcome p m
   | isLeft status = tieWeight
-  | p == (getWinner $ status) = winWeight
+  | p == (getWinner $! status) = winWeight
   | otherwise = lossWeight
   where status = matchStatus m
         getWinner = fromRight undefined
 
 -- Upper Confidence Bound formula
-ucb :: Double -> Integer -> Integer -> Double
+ucb :: Double -> Int -> Int -> Double
 -- UCB1:
 ucb v nChild nParent  = (v / nc) + ucbConst * sqrt ((log np) / nc)
 -- UCB-Minimal:
 -- ucb v nChild nParent  = (v / nc) + ucbConst * (1 / nc)
-  where nc = fromInteger nChild :: Double
-        np = fromInteger nParent :: Double
+  where nc = fromIntegral nChild :: Double
+        np = fromIntegral nParent :: Double
 
 -- backpropagation algorithm
 backprop :: ZipNode (MCNode s) -> Double -> ST s ()
@@ -164,7 +163,10 @@ expand gen winner (t,ps) = do
     else backprop (newTree, ps) $! (-diff)
   return newTree
 
-mctsAlgorithm :: R.StdGen -> Integer -> Token -> ST s (ZipNode (MCNode s)) -> ST s (Token, Maybe Coord, Match Token)
+expandAtIndex :: R.StdGen -> Token -> ZipNode(MCNode s) -> Int -> ST s (MCTree s)
+expandAtIndex gen winner zipper n = expand gen winner $! (descendTo zipper n)
+
+mctsAlgorithm :: R.StdGen -> Int -> Token -> ST s (ZipNode (MCNode s)) -> ST s (Token, Maybe Coord, Match Token)
 mctsAlgorithm gen iteration winner wZipper
   -- after computationalBudget iterations, return the best children of root
   -- according to ucb
@@ -189,8 +191,8 @@ mctsAlgorithm gen iteration winner wZipper
         -- each of them, then restart from root
         | isNothing $ _weight $ T.rootLabel (T.subForest t !! 0) -> do
             let n = (length $! (T.subForest t)) -1
-            let f x = expand gen winner $! (descendTo (t,ps) x)
-            newSubForest <- forM [0..n] f
+            -- let f x = expand gen winner $! (descendTo (t,ps) x)
+            newSubForest <- forM [0..n] (expandAtIndex gen winner (t,ps))
             let newTree = T.Node {T.rootLabel=(T.rootLabel t) , T.subForest=newSubForest}
             pair <- readSTRef . getWeight $! newTree
             let newZipper = return $! (allTheWayBack (newTree,ps))

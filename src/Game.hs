@@ -29,35 +29,30 @@ instance Winnable Token where
 newtype Grid w = Grid { toList :: Vector w } deriving Eq
 
 toGrid :: Vector w -> Grid w
-toGrid a = Grid a
-{--
-  if V.length a == 9
-    then Grid a
-    else error "A Grid must have 9 elements"
---}
+toGrid a = Grid $! a
 
 instance Functor Grid where
   -- fmap f grid = toGrid $ fmap f $ toList grid
-  fmap f (Grid a) = Grid (V.map f a)
+  fmap f (Grid a) = Grid $! (V.map f $! a)
 
 -- The conditions for a Match to be won are different from the ones of Grid,
 -- and it also needs a different instance of Show
 newtype Match w = Match { getGrids :: Grid (Grid w) } deriving Eq
 
 toMatch :: Grid (Grid w) -> Match w
-toMatch m = Match m
+toMatch m = Match $! m
 
 hasWinningTriplets :: (Eq w, Winnable w) => Grid w -> Bool
 hasWinningTriplets (Grid a) =
-  let r = (a!0)
-      s = (a!1)
-      t = (a!2)
-      u = (a!3)
-      v = (a!4)
-      w = (a!5)
-      x = (a!6)
-      y = (a!7)
-      z = (a!8)
+  let r = (!0) $! a
+      s = (!1) $! a
+      t = (!2) $! a
+      u = (!3) $! a
+      v = (!4) $! a
+      w = (!5) $! a
+      x = (!6) $! a
+      y = (!7) $! a
+      z = (!8) $! a
       cv = isWon v
       cx = isWon x
       ct = isWon t
@@ -75,15 +70,15 @@ hasWinningTriplets (Grid a) =
 
 getWinner :: Grid Token -> Token
 getWinner (Grid a) =
-  let r = (a!0)
-      s = (a!1)
-      t = (a!2)
-      u = (a!3)
-      v = (a!4)
-      w = (a!5)
-      x = (a!6)
-      y = (a!7)
-      z = (a!8)
+  let r = (!0) $! a
+      s = (!1) $! a
+      t = (!2) $! a
+      u = (!3) $! a
+      v = (!4) $! a
+      w = (!5) $! a
+      x = (!6) $! a
+      y = (!7) $! a
+      z = (!8) $! a
       cv = isWon v
       cx = isWon x
       ct = isWon t
@@ -104,8 +99,8 @@ getWinner (Grid a) =
 -- grids are won when there's a winning triplet
 -- grids are over when a player wins or when the grid is full
 instance (Eq w, Winnable w) => Winnable (Grid w) where
-  isWon grid = hasWinningTriplets grid
-  isOver (Grid a) = V.all isOver a || isWon (Grid a)
+  isWon grid = hasWinningTriplets $! grid
+  isOver (Grid a) = (V.all isOver $! a) || isWon (Grid $! a)
 
 -- determine the winner for a single Grid, otherwise give Left False if the
 -- game is tied and Left True if it is still ongoing
@@ -114,25 +109,25 @@ instance (Eq w, Winnable w) => Winnable (Grid w) where
 -- ugly but performant
 gridStatus :: Grid Token -> Either Bool Token
 gridStatus grid@(Grid a)
-  | isWon grid = Right $! getWinner grid
+  | winner /= EM = Right winner
   | V.all isOver a = Left False -- tied game
   | otherwise = Left True -- ongoing game
+    where winner = getWinner $! grid
 
 getStatuses :: Match Token -> Grid (Either Bool Token)
-getStatuses (Match grids) = fmap gridStatus grids
+getStatuses (Match grids) = fmap gridStatus $! grids
 
 matchReduction :: Match Token -> Grid Token
-matchReduction m = fmap (fromRight EM) $! getStatuses m
+matchReduction (Match grids) = fmap getWinner $! grids
 
 -- a match is won when the status of some triplet is all "Right w" for the
 -- same w
 -- a match is over when is won or when there is no ongoing game in the
 -- bigger grid
 instance Winnable (Match Token) where
-  isWon m = hasWinningTriplets $! matchReduction m
-  isOver m =
-    let x = toList $! getStatuses m
-    in  not (V.any (== Left True) x) || isWon m
+  isWon m = winner /= EM
+    where winner = getWinner $! matchReduction m
+  isOver m@(Match grid) = (V.all (isOver) (toList grid)) || (isWon $! m)
 
 -- determine the winner for the whole Match, otherwise give Left False if the
 -- game is tied and Left True if it is still ongoing
@@ -140,6 +135,7 @@ instance Winnable (Match Token) where
 -- works properly only on legal positions (at most one winner)
 matchStatus :: Match Token -> Either Bool Token
 matchStatus m
-  | isWon m = Right $! getWinner $! matchReduction m
-  | V.any (== Left True) (toList $! getStatuses m) = Left True -- ongoing
+  | winner /= EM = Right winner
+  | V.any (== Left True) (toList $! getStatuses $! m) = Left True -- ongoing
   | otherwise = Left False -- tied
+    where winner = getWinner $! matchReduction $! m
