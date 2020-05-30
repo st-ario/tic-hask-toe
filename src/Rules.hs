@@ -9,12 +9,12 @@ import           Control.Lens
 import           Data.Tree (Tree, Forest, unfoldTree)
 import qualified Data.Tree as T
 import           Data.Maybe (isNothing, fromJust)
-import           Data.Vector(Vector, (!), singleton)
+import           Data.Vector(Vector, (!), (//), singleton)
 import qualified Data.Vector as V
 
 data Coord = Coord { _row :: Int
                    , _col :: Int
-                   }
+                   } deriving (Eq)
 
 makeLenses ''Coord
 
@@ -48,8 +48,7 @@ getGridEl c (Grid a) = a ! pos
 
 -- setters don't check whether a change is a legal move or not
 setGridEl :: Coord -> w -> Grid w -> Grid w
-setGridEl c w (Grid xs) =
-  toGrid $! (V.take pos xs) V.++ (singleton w) V.++ V.drop (pos+1) xs
+setGridEl c w (Grid xs) = Grid $! xs // [(pos,w)]
     where m = c^.row
           n = c^.col
           pos = (3*m + n)
@@ -75,7 +74,6 @@ setMatchEl move (Match outerGrid@(Grid innergrid)) =
 legalGridMoves :: (Token, Grid Token) -> [(Token, Grid Token)]
 legalGridMoves (lastPlayer,g)
   | lastPlayer == EM = error "EM can't move"
-  | s /= Left True = []
   | otherwise = [(p, setGridEl coord p g) | coord <- ongoingSlots $! fmap winStatus $! g]
     where p = nextPlayer lastPlayer
           s = gridStatus g
@@ -84,32 +82,19 @@ legalGridMoves (lastPlayer,g)
 -- actual game state, return all legal positions achievable from it
 legalMatchMoves :: (Token, Maybe Coord, Match Token) -> [(Token, Maybe Coord, Match Token)]
 legalMatchMoves (lastPlayer, lastCoord, state@(Match gameGrids))
-  | lastPlayer == EM = error "EM can't move"
-  | s /= Left True = []
+  | isNothing lastCoord || not (lc `elem` ongoingGrids) =
+    [(p, Just $! inner, newState outer inner) |
+      outer <- ongoingGrids,
+      inner <- ongoingSlots $! fmap winStatus $! targetGrid outer]
   | otherwise =
-      -- if the subgrid corresponding to the last move is over, the legal
-      -- moves are the one taking place in any subgrid that is not over,
-      -- in any spot that is empty
-      -- otherwise, the legal moves are the one taking place in any spot that
-      -- is empty
-      if isNothing lastCoord || sTarGr /= Left True
-        then targetGridBusy p $! state
-        else [(p, Just inner, (updateState (fromJust lastCoord) $! inner)) | inner <- ongoingSlots $! fmap winStatus $! targetGrid]
+    [(p, Just $! inner, newState lc inner) |
+      inner <- ongoingSlots $! fmap winStatus $! targetGrid lc]
     where p = nextPlayer lastPlayer
-          s = matchStatus $! state
-          targetGrid = getGridEl (fromJust lastCoord) $! gameGrids
-          sTarGr = gridStatus $! targetGrid
-          updateState c d = setMatchEl (Move c d p) $! state
-
--- auxiliary function, for legalMatchMoves
-targetGridBusy :: Token -> Match Token -> [(Token, Maybe Coord, Match Token)]
-targetGridBusy p state@(Match gameGrids) =
-  let availableSubGrids = ongoingSlots $! fmap gridStatus $! gameGrids
-      goodPairs = [(outerCoord, innerCoord) |
-        outerCoord <- availableSubGrids,
-        innerCoord <- ongoingSlots $! fmap winStatus $! getGridEl outerCoord gameGrids]
-      updateState c d = setMatchEl (Move c d p) $! state
-  in [(p,Just $! inner,(updateState $! outer) inner) | (outer, inner) <- goodPairs]
+          redMatch = reduceMatch $! state
+          ongoingGrids = ongoingSlots $! redMatch
+          lc = fromJust lastCoord
+          newState o i = setMatchEl (Move o i p) $! state
+          targetGrid coord = getGridEl coord $! gameGrids
 
 -- seed for the game tree of a single grid
 playTTT :: (Token, Grid Token) -> ((Token, Grid Token),[(Token, Grid Token)])
@@ -119,9 +104,8 @@ playTTT (t,g) = ((t,g), legalGridMoves (t,g))
 playUTTT :: (Token, Maybe Coord, Match Token) -> ((Token, Maybe Coord, Match Token),[(Token, Maybe Coord, Match Token)])
 playUTTT (t,c,g) = ((t,c,g), legalMatchMoves (t,c,g))
 
--- game tree of a match
-playMatchFrom = unfoldTree playUTTT
+-- game tree of an ordinary tic-tac-toe game
+ordinaryGameTree = unfoldTree playTTT
 
--- game tree of a single tic-tac-toe match
-ordinaryGameTree = unfoldTree playTTT (O,gI)
-  where gI = toGrid $ V.replicate 9 EM
+-- game tree of an ultimate tic-tac-toe game
+playMatchFrom = unfoldTree playUTTT
