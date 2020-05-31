@@ -37,18 +37,6 @@ trd (_,_,x) = x
 getWeight :: MCTree s -> STRef s (ValueOfNode,NumberOfVisits)
 getWeight = _weight . _root
 
--- given the current node, return all legal positions reachable from it as
--- children
-legalNodes :: MCNode s -> ST s (Forest s)
-legalNodes (MCN lp lc lm _ _ _) = do
-  match <- readSTRef lm
-  w <- newSTRef (0,0)
-  let legals = legalMatchMoves (lp, lc, match)
-  childrenMatches <- mapM (\(_,_,m)-> newSTRef m) $! legals
-  let childrenPairs = zip legals $! childrenMatches
-  let children = V.fromList $! [MCT (MCN p c m w False Nothing) V.empty | (a@(p,c,_),m) <- childrenPairs]
-  return $! children
-
 -- ############################  Simulation Steps  #############################
 
 -- given an initial state (last player, current board) play an
@@ -60,7 +48,7 @@ simulationUTTT gen state
     where nextMoves = legalMatchMoves $! state
           len = length nextMoves - 1
           (rnd,newGen) = (R.randomR $! (0, len)) $! gen
-          outcome = matchStatus $! (trd $! state)
+          outcome = smartMatchStatus $! state
 
 -- ###################  Monte Carlo Tree Search Algorithm ######################
 
@@ -154,18 +142,18 @@ expand gen winner (t,ps) = do
 expand :: R.StdGen -> Token -> ZipNode s -> ST s (ZipNode s)
 expand gen winner (t,ps) = do
   state <- readSTRef $ t^.root.currentMatch
-  let legalMoves = legalMatchMoves (t^.root.lastPlayer, t^.root.lastMove, state)
+  let triplet = (t^.root.lastPlayer, t^.root.lastMove, state)
+  let legalMoves = legalMatchMoves triplet
   -- if an actual leaf of the game tree is reached, update the node with
   -- this information, backpropagate and return root zipper
   if null legalMoves
     then do
-      let status = matchStatus state
+      let status = smartMatchStatus triplet
       let oldRoot = t^.root
       (newRoot,diff) <- if isLeft status
         then do -- the match ends in a tie
           let newRoot = oldRoot{_isOver=True}
-          let diff = matchOutcome Nothing winner
-          return $! (newRoot,diff)
+          return $! (newRoot,tieWeight)
         else do -- the match ends with a win
           let matchWinner = Just $! fromRight undefined status
           let newRoot = oldRoot{_isOver=True, _winner=matchWinner}
@@ -192,10 +180,11 @@ simAndBackprop :: R.StdGen -> Token -> ZipNode s -> Int -> ST s ()
 simAndBackprop gen winner zipper n = do --undefined
   let targetZipper@(t,ps) = descendTo zipper n
   state <- readSTRef $!  _currentMatch . _root $ t
-  let (_,_,overGame) = simulationUTTT gen (t^.root.lastPlayer, t^.root.lastMove, state)
-  let endingStatus = matchStatus overGame
+  let triplet = (t^.root.lastPlayer, t^.root.lastMove, state)
+  let simulatedTriplet = simulationUTTT gen triplet
+  let endingStatus = smartMatchStatus simulatedTriplet
   let diff = if isLeft endingStatus
-               then matchOutcome Nothing winner
+               then tieWeight
                else matchOutcome (Just $! fromRight undefined endingStatus) winner
   backprop targetZipper diff
 
@@ -234,11 +223,12 @@ mctsAlgorithm gen iteration winner wZipper
 
 getBestMove :: R.StdGen -> (Token, Maybe Coord, Match Token)
   -> (Token, Maybe Coord, Match Token)
-getBestMove gen (lp,lc,lm)
-  | matchStatus lm /= Left True = error "No legal moves available"
+getBestMove gen triplet@(lp,lc,lm)
+  | smartMatchStatus triplet /= Left True = error "No legal moves available"
   | otherwise = runST $ do
       match <- newSTRef lm
       weight <- newSTRef (0,0)
-      let gameTree = MCT (MCN lp Nothing match weight False Nothing) V.empty
+      --let gameTree = MCT (MCN lp Nothing match weight False Nothing) V.empty
+      let gameTree = MCT (MCN lp (Just $ Coord 1 1) match weight False Nothing) V.empty
       let gameZipper = return $ (gameTree, [])
       mctsAlgorithm gen 0 (nextPlayer lp) $! gameZipper

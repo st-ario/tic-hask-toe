@@ -12,12 +12,6 @@ import           Data.Maybe (isNothing, fromJust)
 import           Data.Vector(Vector, (!), (//), singleton)
 import qualified Data.Vector as V
 
-data Coord = Coord { _row :: Int
-                   , _col :: Int
-                   } deriving (Eq)
-
-makeLenses ''Coord
-
 instance Show Coord where
   show coord = "[" ++ show (coord^.row) ++ "|" ++ show(coord^.col) ++ "]"
 
@@ -55,7 +49,7 @@ setGridEl c w (Grid xs) = Grid $! xs // [(pos,w)]
           pos = (3*m + n)
 
 -- return all the coordinates of slots that are ongoing
-ongoingSlots :: Grid (Either Bool Token) -> [Coord]
+ongoingSlots :: Grid Status -> [Coord]
 ongoingSlots g = [ (Coord m n) | m <- [0..2], n <- [0..2],
                   Left True == (getGridEl (Coord m n) $! g)]
 
@@ -85,7 +79,8 @@ legalGridMoves (lastPlayer,g)
 
 -- given the last player's token, the coordinate of the last move, and the
 -- actual game state, return all legal positions achievable from it
-legalMatchMoves :: (Token, Maybe Coord, Match Token) -> [(Token, Maybe Coord, Match Token)]
+legalMatchMoves :: (Token, Maybe Coord, Match Token)
+  -> [(Token, Maybe Coord, Match Token)]
 legalMatchMoves (lastPlayer, lastCoord, state@(Match gameGrids))
   | isNothing lastCoord || not (lc `elem` ongoingGrids) =
     [(p, Just $! inner, newState outer inner) |
@@ -95,7 +90,7 @@ legalMatchMoves (lastPlayer, lastCoord, state@(Match gameGrids))
     [(p, Just $! inner, newState lc inner) |
       inner <- gridOngoingSlots $! targetGrid lc]
     where p = nextPlayer lastPlayer
-          (redMatch,_) = reduceMatch $! state
+          (redMatch,_) = smartReduceMatch lastPlayer lastCoord $! state
           ongoingGrids = ongoingSlots $! redMatch
           lc = fromJust lastCoord
           newState o i = setMatchEl (Move o i p) $! state
@@ -106,7 +101,8 @@ playTTT :: (Token, Grid Token) -> ((Token, Grid Token),[(Token, Grid Token)])
 playTTT (t,g) = ((t,g), legalGridMoves (t,g))
 
 -- seed for the game tree of a match
-playUTTT :: (Token, Maybe Coord, Match Token) -> ((Token, Maybe Coord, Match Token),[(Token, Maybe Coord, Match Token)])
+playUTTT :: (Token, Maybe Coord, Match Token)
+  -> ((Token, Maybe Coord, Match Token),[(Token, Maybe Coord, Match Token)])
 playUTTT (t,c,g) = ((t,c,g), legalMatchMoves (t,c,g))
 
 -- game tree of an ordinary tic-tac-toe game
