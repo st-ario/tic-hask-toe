@@ -13,7 +13,7 @@ import           Control.Monad.ST
 import           Control.Applicative
 import           Data.STRef
 import           Control.Lens
-import           Data.Tree (Tree, Forest, unfoldTree)
+import           Data.Tree (Tree, unfoldTree)
 import qualified Data.Tree as T
 import           Debug.Trace (trace)
 import           Data.Maybe (isNothing, fromJust)
@@ -21,46 +21,33 @@ import           Data.Either (fromRight, isRight, fromLeft, isLeft)
 import           Control.Monad (forM, forM_)
 import           Data.List.Extras.Argmax
 import           Data.List (elemIndices)
-import           Data.Vector (Vector)
+import           Data.Vector (Vector, (!))
 import qualified Data.Vector as V
+import           Control.Monad (join)
+
+fst' :: (a,b,c) -> a
+fst' (x,_,_) = x
+
+snd' :: (a,b,c) -> b
+snd' (_,x,_) = x
 
 trd :: (a,b,c) -> c
 trd (_,_,x) = x
 
--- ###################  Monte Carlo Tree Data Structures #######################
-
-type ValueOfNode = Double
-type NumberOfVisits = Int
-type Weight s = Maybe (STRef s (ValueOfNode,NumberOfVisits))
-
-data MCNode s = MCN { _lastPlayer :: !Token
-                     , _lastMove :: !(Maybe Coord)
-                     , _currentMatch :: !(Match Token)
-                     , _weight :: !(Weight s)
-                     }
-
-makeLenses ''MCNode
-
-type MCTree s = Tree (MCNode s)
-
 getWeight :: MCTree s -> STRef s (ValueOfNode,NumberOfVisits)
-getWeight = fromJust . _weight . T.rootLabel
+getWeight = _weight . _root
 
 -- given the current node, return all legal positions reachable from it as
 -- children
-legalNodes :: MCNode s -> [MCNode s]
-legalNodes (MCN lp lc lm _)
-  | lp == EM = error "EM can't move"
-  | otherwise = [ MCN p c m Nothing |
-                  (p, c, m) <- legalMatchMoves (lp, lc, lm)]
-
--- seed for the game tree
-seedGrid :: MCNode s -> (MCNode s,[MCNode s])
-seedGrid node = (node, legalNodes node)
-
--- game tree starting from a given (last player, last move, current board) state
-unfoldGame :: (Token, Maybe Coord, Match Token) -> ST s (MCTree s)
-unfoldGame (lp,lc,lm) = return $! unfoldTree seedGrid $ MCN lp lc lm Nothing
+legalNodes :: MCNode s -> ST s (Forest s)
+legalNodes (MCN lp lc lm _ _ _) = do
+  match <- readSTRef lm
+  w <- newSTRef (0,0)
+  let legals = legalMatchMoves (lp, lc, match)
+  childrenMatches <- mapM (\(_,_,m)-> newSTRef m) $! legals
+  let childrenPairs = zip legals $! childrenMatches
+  let children = V.fromList $! [MCT (MCN p c m w False Nothing) V.empty | (a@(p,c,_),m) <- childrenPairs]
+  return $! children
 
 -- ############################  Simulation Steps  #############################
 
@@ -76,7 +63,6 @@ simulationUTTT gen state
           outcome = matchStatus $! (trd $! state)
 
 -- ###################  Monte Carlo Tree Search Algorithm ######################
--- NB: ZipNode (MCNode' s) = (MCTree s, [Position (MCNode' s)])
 
 -- #### Parameters to Tune:
 tieWeight   = 0
@@ -99,21 +85,17 @@ computationalBudget = 4000 :: Int
 -- sets the weight of a node to (0,0)
 setToZero :: ST s (MCTree s) -> ST s (MCTree s)
 setToZero t = do
-  (T.Node r sf) <- t
+  (MCT r sf) <- t
   x <- newSTRef (0,0)
-  let newRoot = set weight (Just $! x) $! r
-  return (T.Node newRoot sf)
+  let newRoot = set weight x $! r
+  return (MCT newRoot sf)
 
--- determine if the grid is won, tied or lost by the given player
--- and assigns weights accordingly
--- works properly only if called on a game that is over
-matchOutcome :: Token -> Match Token -> Double
-matchOutcome p m
-  | isLeft status = tieWeight
-  | p == (getWinner $! status) = winWeight
+matchOutcome :: Maybe Token -> Token -> Double
+matchOutcome mt t
+  | isNothing mt = tieWeight
+  | y == t = winWeight
   | otherwise = lossWeight
-  where status = matchStatus m
-        getWinner = fromRight undefined
+  where y = fromJust mt
 
 -- Upper Confidence Bound formula
 ucb :: Double -> Int -> Int -> Double
@@ -125,7 +107,7 @@ ucb v nChild nParent  = (v / nc) + ucbConst * sqrt ((log np) / nc)
         np = fromIntegral nParent :: Double
 
 -- backpropagation algorithm
-backprop :: ZipNode (MCNode s) -> Double -> ST s ()
+backprop :: ZipNode s -> Double -> ST s ()
 backprop (t,ps) diff = do
   let incr (v,n) =  (v + diff , n + 1)
   modifySTRef' (getWeight t) $! incr
@@ -139,7 +121,7 @@ bestChild :: R.StdGen -> MCTree s -> ST s Int
 bestChild gen t = do
   parentWeight <- readSTRef $! getWeight t
   let parentN = snd $! parentWeight
-  let refValues = [x | x <- fmap getWeight $! (T.subForest t)]
+  let refValues = [x | x <- V.toList $! V.map getWeight $! (_sForest t)]
   valuesList <- (forM $! refValues) readSTRef
   trace ("the weigh of the parent is " ++ show parentN) $ pure ()
   -- trace ("the weights of the children are " ++ show valuesList) $ pure ()
@@ -155,54 +137,94 @@ bestChild gen t = do
             trace ("let's pick " ++ show (positions !! r)) $ return ()
             return (positions !! r)
 
-expand :: R.StdGen -> Token -> ZipNode (MCNode s) -> ST s (MCTree s)
+{--
+expand :: R.StdGen -> Token -> ZipNode s -> ST s (MCTree s)
 expand gen winner (t,ps) = do
   newTree <- setToZero $ return t
-  let state = T.rootLabel $! newTree
-  let result = simulationUTTT gen $! (state^.lastPlayer, state^.lastMove, state^.currentMatch)
+  let state = _root $! newTree
+  m <- readSTRef $! state^.currentMatch
+  let result = simulationUTTT gen $! (state^.lastPlayer, state^.lastMove, m)
   let diff = matchOutcome winner $! (trd result)
   if winner == state^.lastPlayer
     then backprop (newTree, ps) $! diff
     else backprop (newTree, ps) $! (-diff)
   return newTree
+--}
 
-expandAtIndex :: R.StdGen -> Token -> ZipNode(MCNode s) -> Int -> ST s (MCTree s)
-expandAtIndex gen winner zipper n = expand gen winner $! (descendTo zipper n)
+expand :: R.StdGen -> Token -> ZipNode s -> ST s (ZipNode s)
+expand gen winner (t,ps) = do
+  state <- readSTRef $ t^.root.currentMatch
+  let legalMoves = legalMatchMoves (t^.root.lastPlayer, t^.root.lastMove, state)
+  -- if an actual leaf of the game tree is reached, update the node with
+  -- this information, backpropagate and return root zipper
+  if null legalMoves
+    then do
+      let status = matchStatus state
+      let oldRoot = t^.root
+      (newRoot,diff) <- if isLeft status
+        then do -- the match ends in a tie
+          let newRoot = oldRoot{_isOver=True}
+          let diff = matchOutcome Nothing winner
+          return $! (newRoot,diff)
+        else do -- the match ends with a win
+          let matchWinner = Just $! fromRight undefined status
+          let newRoot = oldRoot{_isOver=True, _winner=matchWinner}
+          let diff = matchOutcome matchWinner winner
+          return $! (newRoot,diff)
+      let newZipper = (MCT newRoot V.empty,ps)
+      backprop newZipper diff
+      return $! allTheWayBack newZipper
+    -- otherwise, update the subforest, simulate and backpropagate once
+    -- for every child node, then return root zipper
+    -- (tuples with STRefs call for a bit of a monadic mess)
+    else do
+      let len = length legalMoves - 1
+      newWeights <- forM [0..len] (\_ -> newSTRef $ (0,0))
+      newStates <- forM legalMoves (newSTRef . trd)
+      let pairs = zip newStates newWeights
+      let z = zip pairs legalMoves -- :: [(pair,triplet)]
+      let newSubForest = V.fromList $! [MCT (MCN p c nextState nextWeight False Nothing) V.empty | (pair@(nextState,nextWeight),triplet@(p,c,_))<-z]
+      let newZipper = (t{_sForest=newSubForest},ps)
+      forM [0..len] (simAndBackprop gen winner newZipper)
+      return $! allTheWayBack newZipper
 
-mctsAlgorithm :: R.StdGen -> Int -> Token -> ST s (ZipNode (MCNode s)) -> ST s (Token, Maybe Coord, Match Token)
+simAndBackprop :: R.StdGen -> Token -> ZipNode s -> Int -> ST s ()
+simAndBackprop gen winner zipper n = do --undefined
+  let targetZipper@(t,ps) = descendTo zipper n
+  state <- readSTRef $!  _currentMatch . _root $ t
+  let (_,_,overGame) = simulationUTTT gen (t^.root.lastPlayer, t^.root.lastMove, state)
+  let endingStatus = matchStatus overGame
+  let diff = if isLeft endingStatus
+               then matchOutcome Nothing winner
+               else matchOutcome (Just $! fromRight undefined endingStatus) winner
+  backprop targetZipper diff
+
+mctsAlgorithm :: R.StdGen -> Int -> Token -> ST s (ZipNode s)
+  -> ST s (Token, Maybe Coord, Match Token)
 mctsAlgorithm gen iteration winner wZipper
   -- after computationalBudget iterations, return the best children of root
   -- according to ucb
   | iteration >= computationalBudget = do
       (t,ps) <- wZipper
       n <- bestChild gen t
-      let child = T.rootLabel $! (T.subForest t !! n)
-      return (child^.lastPlayer, child^.lastMove, child^.currentMatch)
+      let child = _root $! (_sForest t ! n)
+      m <- readSTRef $! child^.currentMatch
+      return (child^.lastPlayer, child^.lastMove, m)
   | otherwise = do
       (t,ps) <- wZipper
       if
-        -- when reaching a leaf of the game tree, backpropagate and restart from root
-        | length (T.subForest t) == 0 -> do
-            let diff = matchOutcome winner $! (_currentMatch . T.rootLabel $ t)
-            if winner == (_lastPlayer . T.rootLabel $ t)
-              then backprop (t,ps) $! diff
-              else backprop (t,ps) $! (-diff)
+        -- leaf of the game tree
+        | t^.root.isOver -> do
+            m <- readSTRef (_currentMatch . _root $ t)
+            let diff = matchOutcome (_winner . _root $ t) winner
+            backprop (t,ps) $! diff
             let newZipper = return $! allTheWayBack (t,ps)
             mctsAlgorithm gen (iteration + 1) winner $! newZipper
-        -- when reaching a node whose children's weights are not initialized,
-        -- initialize all children, run simulations and backpropagate once for
-        -- each of them, then restart from root
-        | isNothing $ _weight $ T.rootLabel (T.subForest t !! 0) -> do
-            let n = (length $! (T.subForest t)) -1
-            -- let f x = expand gen winner $! (descendTo (t,ps) x)
-            newSubForest <- forM [0..n] (expandAtIndex gen winner (t,ps))
-            let newTree = T.Node {T.rootLabel=(T.rootLabel t) , T.subForest=newSubForest}
-            pair <- readSTRef . getWeight $! newTree
-            let newZipper = return $! (allTheWayBack (newTree,ps))
+        -- node whose children have not been visited
+        | (V.null $ t^.sForest) -> do
+            let newZipper = expand gen winner (t,ps)
             mctsAlgorithm gen (iteration + 1) winner $! newZipper
-        -- when reaching a node whose children's weights have already been
-        -- initialized, pick the best children according to ucb and
-        -- restart from it
+        -- node whose children's have already been visited
         | otherwise -> do
             n <- bestChild gen t
             let newZipper = return $! (descendTo (t, ps) n)
@@ -210,29 +232,13 @@ mctsAlgorithm gen iteration winner wZipper
             -- NB the iteration number is not incremented, as the algorithm
             -- is not getting back to the root
 
--- remove from the available moves all the ones that can make the opponent
--- win in one; if all the moves available result in a loss in one, do nothing
-precondition :: MCTree s -> MCTree s
-precondition tree
-  | length newSubForest == 0 = tree
-  | otherwise = tree { T.subForest = newSubForest }
-    where newSubForest = filter (not . isBlunder) $! (T.subForest tree)
-
--- if a move results in a loss in one, return True, otherwise return False
-isBlunder :: MCTree s -> Bool
-isBlunder (T.Node r sub) =
-  let moves = legalMatchMoves $! (r^.lastPlayer, r^.lastMove, r^.currentMatch)
-  in any isRight $! fmap matchStatus $! (fmap trd $! moves)
-
-getBestMove :: R.StdGen -> (Token, Maybe Coord, Match Token) -> (Token, Maybe Coord, Match Token)
+getBestMove :: R.StdGen -> (Token, Maybe Coord, Match Token)
+  -> (Token, Maybe Coord, Match Token)
 getBestMove gen (lp,lc,lm)
   | matchStatus lm /= Left True = error "No legal moves available"
   | otherwise = runST $ do
-      gameTree <- setToZero $! fmap precondition $! unfoldGame (lp,lc,lm)
-      -- if after conditioning there is only one move available, just return it
-      -- otherwise, run the MCTS algorithm
-      if length (T.subForest gameTree) == 1
-        then do let unique = T.rootLabel $ (T.subForest gameTree) !! 0
-                return $ (unique^.lastPlayer, unique^.lastMove, unique^.currentMatch)
-        else do let gameZipper = return $ (gameTree, V.empty)
-                mctsAlgorithm gen 0 (nextPlayer lp) $! gameZipper
+      match <- newSTRef lm
+      weight <- newSTRef (0,0)
+      let gameTree = MCT (MCN lp Nothing match weight False Nothing) V.empty
+      let gameZipper = return $ (gameTree, [])
+      mctsAlgorithm gen 0 (nextPlayer lp) $! gameZipper

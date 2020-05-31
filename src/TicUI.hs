@@ -4,9 +4,11 @@ import Game
 import Data.Vector (Vector, (!))
 
 instance Show Token where
-  show EM = " "
-  show X  = "X"
-  show O  = "O"
+  show t
+    | t == em = " "
+    | t == x = "X"
+    | t == o = "O"
+    | otherwise = error "token out of bound"
 
 -- auxiliary function, useful to render differently a single grid, and a grid
 -- of grids

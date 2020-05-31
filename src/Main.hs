@@ -14,7 +14,7 @@ import qualified Data.Vector as V
 
 clear = putStrLn "\ESC[2J"
 
-emptyGrid = toGrid $ V.replicate 9 EM
+emptyGrid = toGrid $ V.replicate 9 em
 emptyMatch = toMatch $ toGrid $! V.replicate 9 emptyGrid
 
 validInputs = replicateM 4 ['0'..'2']
@@ -43,9 +43,9 @@ gameLoop gen triple = do
   let rawCoord = fmap digitToInt input
   let outer = Coord (rawCoord !! 0) (rawCoord !! 1)
   let inner = Coord (rawCoord !! 2) (rawCoord !! 3)
-  let userMove = Move outer inner O
+  let userMove = Move outer inner o
   let newState = setMatchEl userMove currentBoard
-  gameLoop gen (O, Just inner, newState)
+  gameLoop gen (o, Just inner, newState)
   return ()
 
 main :: IO ()
@@ -55,5 +55,5 @@ main = do
   putStrLn "Welcome to Tic-Hask-Toe!"
   putStrLn "Press any key to start playing, press Ctrl-C to quit."
   getLine
-  gameLoop g (O, Nothing, emptyMatch)
+  gameLoop g (o, Nothing, emptyMatch)
   return ()

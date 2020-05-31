@@ -31,9 +31,10 @@ data Move = Move { _outer :: Coord
 makeLenses ''Move
 
 nextPlayer :: Token -> Token
-nextPlayer EM = error "EM is not a valid player"
-nextPlayer X  = O
-nextPlayer O  = X
+nextPlayer t
+  | t == x = o
+  | t == o = x
+  | otherwise = error "Not a valid player"
 
 -- the position in the list encoding the grid is the expansion
 -- in base 3 of the coordinates
@@ -58,6 +59,10 @@ ongoingSlots :: Grid (Either Bool Token) -> [Coord]
 ongoingSlots g = [ (Coord m n) | m <- [0..2], n <- [0..2],
                   Left True == (getGridEl (Coord m n) $! g)]
 
+gridOngoingSlots :: Grid Token -> [Coord]
+gridOngoingSlots g = [Coord m n | m<-[0..2], n<-[0..2],
+                      em == (getGridEl (Coord m n) $! g)]
+
 setMatchEl :: Move -> Match Token -> Match Token
 setMatchEl move (Match outerGrid@(Grid innergrid)) =
   toMatch $! ((setGridEl (Coord a b)) $! newInnerGrid) $! outerGrid
@@ -73,8 +78,8 @@ setMatchEl move (Match outerGrid@(Grid innergrid)) =
 -- positions achieveable from it
 legalGridMoves :: (Token, Grid Token) -> [(Token, Grid Token)]
 legalGridMoves (lastPlayer,g)
-  | lastPlayer == EM = error "EM can't move"
-  | otherwise = [(p, setGridEl coord p g) | coord <- ongoingSlots $! fmap winStatus $! g]
+  | lastPlayer == em = error "EM can't move"
+  | otherwise = [(p, setGridEl coord p g) | coord <- gridOngoingSlots $! g]
     where p = nextPlayer lastPlayer
           s = gridStatus g
 
@@ -85,12 +90,12 @@ legalMatchMoves (lastPlayer, lastCoord, state@(Match gameGrids))
   | isNothing lastCoord || not (lc `elem` ongoingGrids) =
     [(p, Just $! inner, newState outer inner) |
       outer <- ongoingGrids,
-      inner <- ongoingSlots $! fmap winStatus $! targetGrid outer]
+      inner <- gridOngoingSlots $! targetGrid outer]
   | otherwise =
     [(p, Just $! inner, newState lc inner) |
-      inner <- ongoingSlots $! fmap winStatus $! targetGrid lc]
+      inner <- gridOngoingSlots $! targetGrid lc]
     where p = nextPlayer lastPlayer
-          redMatch = reduceMatch $! state
+          (redMatch,_) = reduceMatch $! state
           ongoingGrids = ongoingSlots $! redMatch
           lc = fromJust lastCoord
           newState o i = setMatchEl (Move o i p) $! state

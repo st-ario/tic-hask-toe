@@ -1,54 +1,73 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module TreeZipper where
 
-import           Data.Tree (Tree, Forest)
-import qualified Data.Tree as T
-import           Data.Vector (Vector)
+import Game
+import Rules
+
+import           Data.Vector (Vector, (++), (!))
 import qualified Data.Vector as V
+import           Control.Lens
+import           Control.Monad.ST
+import           Data.STRef
 
--- Zipper structure on Data.Tree
+-- ###################  Monte Carlo Tree Data Structures #######################
+type ValueOfNode = Double
+type NumberOfVisits = Int
+type Weight s = STRef s (ValueOfNode,NumberOfVisits)
 
-data Position a = Node { _leftForest :: Forest a -- forest to the left
-                       , _rightForest :: Forest a -- forest to the right
-                       , _parent :: a -- label of parent node
-                       } deriving (Show, Eq)
+data MCNode s = MCN { _lastPlayer :: !Token
+                     , _lastMove :: !(Maybe Coord)
+                     , _currentMatch :: !(STRef s (Match Token))
+                     , _weight :: !(Weight s)
+                     , _isOver :: !Bool
+                     , _winner :: !(Maybe Token)
+                     }
 
-type ZipNode a = (Tree a, Vector (Position a))
+makeLenses ''MCNode
 
-depth :: ZipNode a -> Int
+data MCTree s = MCT { _root :: MCNode s
+                    , _sForest :: Vector (MCTree s)
+                    }
+
+makeLenses ''MCTree
+
+type Forest s = Vector (MCTree s)
+
+-- Zipper structure on Vector Trees
+
+data Position s = Node { _leftForest :: Forest s -- forest to the left
+                       , _rightForest :: Forest s -- forest to the right
+                       , _parent :: MCNode s -- label of parent node
+                       }
+
+type ZipNode s = (MCTree s, [Position s])
+
+depth :: ZipNode s -> Int
 depth (_,p) = length p
 
-stepBack :: ZipNode a -> ZipNode a
-stepBack (t,vp)
-  | null vp = error "The root has no parent node"
-  | otherwise = (t', V.tail vp)
-  where p = V.head vp
-        newRoot = _parent p
+stepBack :: ZipNode s -> ZipNode s
+stepBack (_,[]) = error "The root has no parent node"
+stepBack (t,(p:ps)) = (t',ps)
+  where newRoot = _parent p
         lF = _leftForest p
         rF = _rightForest p
-        t' = T.Node newRoot (lF ++ [t] ++ rF)
+        t' = MCT newRoot (lF V.++ (V.singleton t) V.++ rF)
 
-descendTo :: ZipNode a -> Int -> ZipNode a
-descendTo (t,ps) n = (t',(Node l r p) `V.cons` ps)
-  where sub = T.subForest t
-        t' = sub !! n
-        l = take n sub
-        r = drop (n+1) sub
-        p = T.rootLabel t
+descendTo :: ZipNode s -> Int -> ZipNode s
+descendTo (t,ps) n = (t',(Node l r p):ps)
+  where sub = _sForest t
+        t' = sub ! n
+        l = V.take n sub
+        r = V.drop (n+1) sub
+        p = _root t
 
-allTheWayBack :: ZipNode a -> ZipNode a
+allTheWayBack :: ZipNode s -> ZipNode s
 allTheWayBack (t,ps) =
   if length ps == 0
     then (t,ps)
     else allTheWayBack $! stepBack (t,ps)
 
-replaceNode :: ZipNode a -> a -> ZipNode a
+replaceNode :: ZipNode s -> MCNode s -> ZipNode s
 replaceNode (t,ps) new = (t',ps)
-  where t' = T.Node {T.rootLabel=new , T.subForest=(T.subForest t)}
-
-{--
--- apply a function to all children of the current position
-replaceSubForestBy :: (Tree a -> Tree a) -> ZipNode a -> ZipNode a
-replaceSubForestBy f (t,ps) = (t',ps)
-  where newForest = fmap f $! (T.subForest t)
-        t' = T.Node {T.rootLabel=(T.rootLabel t) , T.subForest=newForest}
---}
+  where t' = t{ _root = new }

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Game where
 
@@ -9,22 +10,13 @@ import           Data.Vector (Vector,(!),cons,empty,singleton)
 import qualified Data.Vector as V
 import           Control.Monad (join)
 
-class Winnable a where
-  winStatus :: a -> Either Bool a
   -- Left True  represents an ongoing status
   -- Left False represents a tied status
   -- Right w    represents a status won by w
-  -- winStatus /= Left True means the game is over
+  -- status /= Left True means the game is over
 
--- tokens are either empty, X or O
-data Token = EM | X | O deriving Eq
-
--- a slot is considered won when either player occupied it
--- an empty slot is a "game in progress"
-instance Winnable Token where
-  winStatus EM = Left True -- ongoing
-  winStatus X = Right X
-  winStatus O = Right O
+newtype Token = Token Int deriving (Eq, Enum)
+(o:em:x:_) = [Token (-1) ..]
 
 newtype Grid w = Grid { toList :: Vector w } deriving Eq
 
@@ -41,45 +33,48 @@ newtype Match w = Match { getGrids :: Grid (Grid w) } deriving Eq
 toMatch :: Grid (Grid w) -> Match w
 toMatch m = Match $! m
 
-gridStatus :: (Eq w, Winnable w) => Grid w -> Either Bool w
-gridStatus (Grid vs) = 
-  if -- rows
-    | (ct && r == s && r == t) -> r
-    | (cv && u == v && u == w) -> u
-    | (cx && x == y && x == z) -> x
-    -- columns             
-    | (cx && r == u && r == x) -> r
-    | (cv && s == v && s == y) -> s
-    | (ct && t == w && t == z) -> t
-    -- diagonals               
-    | (cv && r == v && r == z) -> r
-    | (cv && t == v && t == x) -> t
-    | otherwise -> Left $! V.any (== Left True) a
-      where a = V.map winStatus $ vs
-            r = a!0
-            s = a!1
-            t = a!2
-            u = a!3
-            v = a!4
-            w = a!5
-            x = a!6
-            y = a!7
-            z = a!8
-            cv = isRight v
-            cx = isRight x
-            ct = isRight t
+gridStatus :: Grid Token -> Either Bool Token
+gridStatus (Grid vt) =
+  if --rows
+    | (nx0 && x0 == x1 && x0 == x2) -> Right x0
+    | (nx4 && x3 == x4 && x3 == x5) -> Right x4
+    | (nx8 && x6 == x7 && x6 == x8) -> Right x8
+    -- columns
+    | (nx0 && x0 == x3 && x0 == x6) -> Right x0
+    | (nx4 && x1 == x4 && x1 == x7) -> Right x4
+    | (nx8 && x2 == x5 && x2 == x8) -> Right x8
+    -- diagonals
+    | (nx4 && x0 == x4 && x4 == x8) -> Right x4
+    | (nx4 && x2 == x4 && x4 == x6) -> Right x4
+    | otherwise -> if V.any (==em) vt
+                     then Left True
+                     else Left False
+      where x0 = vt!0
+            x1 = vt!1
+            x2 = vt!2
+            x3 = vt!3
+            x4 = vt!4
+            x5 = vt!5
+            x6 = vt!6
+            x7 = vt!7
+            x8 = vt!8
+            nx0 = x0 /= em
+            nx4 = x4 /= em
+            nx8 = x8 /= em
 
-reduceMatch :: Match Token -> Grid (Either Bool Token)
-reduceMatch (Match grids) = fmap gridStatus $! grids
+simplify :: Either Bool Token -> Token
+simplify (Right t) = t
+simplify (Left _) = em
 
-instance Winnable (Either Bool Token) where
-  winStatus = Right
--- just a trick for the next function
+reduceMatch :: Match Token -> (Grid (Either Bool Token),Either Bool Token)
+reduceMatch (Match grids) = (statusGrid,status)
+  where statusGrid = fmap gridStatus $! grids
+        status = gridStatus $ fmap simplify statusGrid -- keep lazy!
+        -- in Rules.hs only the first component is needed
 
 matchStatus :: Match Token -> Either Bool Token
 matchStatus match
-  | isRight winner = winner
+  | isRight s = s
   | V.any (== Left True) vs = Left True
   | otherwise = Left False
-  where redGrid@(Grid vs) = reduceMatch $! match
-        winner = join $! gridStatus $! redGrid
+  where (g@(Grid vs),s) = reduceMatch match
