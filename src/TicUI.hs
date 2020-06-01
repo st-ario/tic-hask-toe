@@ -3,13 +3,6 @@ module TicUI where
 import Game
 import Data.Vector (Vector, (!))
 
-instance Show Token where
-  show t
-    | t == em = " "
-    | t == x = "X"
-    | t == o = "O"
-    | otherwise = error "token out of bound"
-
 -- auxiliary function, useful to render differently a single grid, and a grid
 -- of grids
 showRow :: (Show w) => Int -> Grid w -> String
@@ -40,4 +33,4 @@ instance (Show w) => Show (Match w) where
     showRow 2 (g!6) ++ " ║ " ++ showRow 2 (g!7) ++ " ║ " ++ showRow 2 (g!8) ++ "\n" ++
     showRow 3 (g!6) ++ " ║ " ++ showRow 3 (g!7) ++ " ║ " ++ showRow 3 (g!8)
     ++ "\n"
-      where g = toList $ getGrids m
+      where g = toVector $ fmap fst $ getGrids m

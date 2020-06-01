@@ -16,15 +16,17 @@ type ValueOfNode = Double
 type NumberOfVisits = Int
 type Weight s = STRef s (ValueOfNode,NumberOfVisits)
 
-data MCNode s = MCN { _lastPlayer :: !Token
-                     , _lastMove :: !(Maybe Coord)
-                     , _currentMatch :: !(STRef s (Match Token))
-                     , _weight :: !(Weight s)
-                     , _isOver :: !Bool
-                     , _winner :: !(Maybe Token)
-                     }
+data MCNode s = MCN { _lastMove :: !Move
+                    , _currentMatch :: !(STRef s (Match Token))
+                    , _weight :: !(Weight s)
+                    , _isOver :: !Bool
+                    , _winner :: !(Maybe Token)
+                    }
 
 makeLenses ''MCNode
+
+getWeight :: MCTree s -> STRef s (ValueOfNode,NumberOfVisits)
+getWeight = _weight . _root
 
 data MCTree s = MCT { _root :: MCNode s
                     , _sForest :: Vector (MCTree s)
