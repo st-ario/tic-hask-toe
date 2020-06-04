@@ -13,10 +13,10 @@ import           Data.Char (digitToInt)
 import qualified Data.Vector as V
 import           Data.Maybe (isNothing, fromJust)
 
-clear = putStrLn "\ESC[2J"
+clear = putStrLn "\ESC[2J\ESC[H"
 
 emptyGrid = Grid $ V.replicate 9 em
-emptyMatch = Match $ Grid $! V.replicate 9 (emptyGrid, Left True)
+emptyMatch = Match $ Grid $ V.replicate 9 (emptyGrid, Left True)
 
 validInputs = replicateM 4 ['0'..'2']
 
@@ -31,9 +31,10 @@ testInput input =
     else do putStrLn "Please enter a valid move"
             newInput <- getLine
             testInput newInput
-         
+
 gameLoop :: R.StdGen -> (Move, Match Token) -> IO ()
 gameLoop gen pair = do
+  putStrLn "Thinking..."
   let state = getBestMove gen pair
   let currentBoard = snd state
   clear
@@ -42,8 +43,8 @@ gameLoop gen pair = do
   inputMove <- getLine
   input <- testInput inputMove
   let rawCoord = fmap digitToInt input
-  let outer = Coord (rawCoord !! 0) (rawCoord !! 1)
-  let inner = Coord (rawCoord !! 2) (rawCoord !! 3)
+  let outer = Coord ((rawCoord !! 0),(rawCoord !! 1))
+  let inner = Coord ((rawCoord !! 2),(rawCoord !! 3))
   let userMove = Move outer inner o
   let newState = setMatchEl userMove currentBoard
   if isNothing newState
@@ -58,5 +59,5 @@ main = do
   putStrLn "Welcome to Tic-Hask-Toe!"
   putStrLn "Press any key to start playing, press Ctrl-C to quit."
   getLine
-  gameLoop g (Move (Coord 1 1) (Coord 1 1) o, emptyMatch)
+  gameLoop g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
   return ()

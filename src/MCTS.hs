@@ -1,8 +1,9 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE MultiWayIf #-}
 
-module MCTS where
+module MCTS
+( getBestMove
+--, simulationUTTT
+) where
 
 import Game
 import Rules
@@ -10,54 +11,39 @@ import TreeZipper
 
 import qualified System.Random as R
 import           Control.Monad.ST
-import           Control.Applicative
 import           Data.STRef
 import           Control.Lens
-import           Data.Tree (Tree, unfoldTree)
-import qualified Data.Tree as T
 import           Debug.Trace (trace)
 import           Data.Maybe (isNothing, fromJust)
-import           Data.Either (fromRight, isRight, fromLeft, isLeft)
-import           Control.Monad (forM, forM_)
-import           Data.List.Extras.Argmax
+import           Data.Either (isLeft)
+import           Data.Either.Extra (eitherToMaybe)
+import           Control.Monad (forM, forM_, liftM, (<$!>))
 import           Data.List (elemIndices)
 import           Data.Vector (Vector, (!))
 import qualified Data.Vector as V
-import           Control.Monad (join)
 
 -- ############################  Simulation Step  ##############################
 
 simulationUTTT :: R.StdGen -> (Move, Match Token, Status)
   -> (Move, Match Token, Status)
-simulationUTTT gen triplet@(move,match,status)
+simulationUTTT gen (move,match,status)
   | outcome /= Left True = (move,match,outcome)
-  | otherwise = simulationUTTT newGen $! (next !! rnd)
-    where nextMoves = V.toList $ legalMatchMoves move $! match
-          next = [(a,b,Left True) | (a,b) <- nextMoves]
-          len = length nextMoves - 1
-          (rnd,newGen) = (R.randomR $! (0, len)) $! gen
-          outcome = smartMatchStatus $! pair
-          pair = (move,match)
+  | otherwise = simulationUTTT newGen $! ((!) $! next) $! rnd
+    where nextMoves = legalMatchMoves move match
+          next = V.map (\(a,b)-> (a,b,Left True)) nextMoves
+          len = (length $! nextMoves) - 1
+          (rnd,newGen) = (R.randomR $! (0, len)) gen
+          outcome = smartMatchStatus (move,match)
 
 -- ###################  Monte Carlo Tree Search Algorithm ######################
 
 -- #### Parameters to Tune:
 tieWeight   = 0
 winWeight   = 1
-lossWeight  = -1
---ucbConst    = 1 * sqrt(2)
-ucbConst    = 1.01 * sqrt(2)
-computationalBudget = 4000 :: Int
--- tie = 2 win = 2 loss = -2 C = 1.2 OK for UCB1, TTT
--- a bit inconsistent, sometimes loses against optimal play
-
--- tie = 1 win = 2 loss = -1 C <= ~ computationalBudget / 10 
--- very good for UCB-Minimal, TTT
--- guarantees tie playing as X, but ties when it could win
-
--- tie = 1.1 win = 2 loss = -0.1 C = 45
--- great for UCB-Minimal, TTT
--- mostly plays optimally as X
+lossWeight  = 0
+ucbConst    = 1
+computationalBudget = 20000 :: Int
+-- ########################
 
 matchOutcome :: Maybe Token -> Token -> Double
 matchOutcome mt t
@@ -69,122 +55,106 @@ matchOutcome mt t
 -- Upper Confidence Bound formula
 ucb :: Double -> Int -> Int -> Double
 -- UCB1:
-ucb v nChild nParent  = (v / nc) + ucbConst * sqrt ((log np) / nc)
+ucb v nChild nParent  = (v / nc) + ucbConst * sqrt (2 * (log np) / nc)
 -- UCB-Minimal:
 -- ucb v nChild nParent  = (v / nc) + ucbConst * (1 / nc)
   where nc = fromIntegral nChild :: Double
         np = fromIntegral nParent :: Double
 
--- backpropagation algorithm
+getWeight :: MCTree s -> STRef s (ValueOfNode,NumberOfVisits)
+getWeight = _weight . _root
+
 backprop :: ZipNode s -> Double -> ST s ()
 backprop (t,ps) diff = do
   let incr (v,n) =  (v + diff , n + 1)
   modifySTRef' (getWeight t) $! incr
   if length ps == 0
     then return ()
-    else (backprop $! stepBack (t,ps)) $! (-diff)
+    else (backprop $! stepBack (t,ps)) $! diff
+
+argMaxIndices :: Ord b => (a -> b) -> Vector a -> Vector Int
+argMaxIndices f vs = (V.elemIndices $! max) results
+  where results = V.map f vs
+        max = V.maximum $! results
 
 -- returns the index of a child maximizing ucb
 -- if multiple children maximize ucb, pick one randomly
 bestChild :: R.StdGen -> MCTree s -> ST s Int
 bestChild gen t = do
-  parentWeight <- readSTRef $! getWeight t
-  let parentN = snd $! parentWeight
-  let refValues = [x | x <- V.toList $! V.map getWeight $! (_sForest t)]
-  valuesList <- (forM $! refValues) readSTRef
-  trace ("the weigh of the parent is " ++ show parentN) $ pure ()
-  -- trace ("the weights of the children are " ++ show valuesList) $ pure ()
+  parentN <- snd <$!> (readSTRef . getWeight) t
+  valuesList <- mapM (readSTRef . getWeight) $! t^.sForest
+  --trace ("the weigh of the parent is " ++ show parentN) $ pure ()
+  --trace ("the weights of the children are " ++ (show $ fmap snd valuesList)) $ pure ()
   let toMaximize (v,c) = ucb v c $! parentN
-  let bestWeight = argmax toMaximize $! valuesList
-  let positions = (elemIndices $! bestWeight) valuesList
-  trace ("ucb is maximized by the ones in position " ++ show positions) $ return ()
-  -- trace ("the UCBs are " ++ show (fmap toMaximize valuesList)) $ return ()
+  let positions = argMaxIndices toMaximize $! valuesList
+  --trace ("ucb is maximized by the ones in position " ++ show positions) $ return ()
+  --trace ("the UCBs are " ++ show (fmap toMaximize valuesList)) $ return ()
   let len = (length $! positions) - 1
   if len == 0
-    then return (positions !! 0)
+    then return (positions ! 0)
     else do let r = fst $! R.randomR (0,len) gen
-            trace ("let's pick " ++ show (positions !! r)) $ return ()
-            return (positions !! r)
+            --trace ("let's pick " ++ show (positions !! r)) $ return ()
+            return (positions ! r)
 
 expand :: R.StdGen -> Token -> ZipNode s -> ST s (ZipNode s)
-expand gen winner (t,ps) = do
-  state <- readSTRef $ t^.root.currentMatch
-  let status = smartMatchStatus ((t^.root.lastMove),state)
+expand gen toWin (t,ps) = do
+  state <- readSTRef $! t^.root.currentMatch
+  let status = smartMatchStatus $! (t^.root.lastMove,state)
   -- if an actual leaf of the game tree is reached, update the node with
   -- this information, backpropagate and return root zipper
   if status /= Left True
     then do
+      let actualWinner = eitherToMaybe status
       let oldRoot = t^.root
       (newRoot,diff) <- if isLeft status
-        then do -- the match ends in a tie
-          let newRoot = oldRoot{_isOver=True}
-          return $! (newRoot,tieWeight)
-        else do -- the match ends with a win
-          let matchWinner = Just $! fromRight undefined status
-          let newRoot = oldRoot{_isOver=True, _winner=matchWinner}
-          let diff = matchOutcome matchWinner winner
-          return $! (newRoot,diff)
-      let newZipper = (MCT newRoot V.empty,ps)
-      backprop newZipper diff
+        then return $! (oldRoot{_isOver=True},tieWeight)
+        else return $! (oldRoot{_isOver=True, _winner=actualWinner}
+                       ,matchOutcome actualWinner toWin)
+      let newZipper = ((MCT $! newRoot) V.empty,ps)
+      (backprop $! newZipper) $! diff
       return $! allTheWayBack newZipper
     -- otherwise, update the subforest, simulate and backpropagate once
     -- for every child node, then return root zipper
-    -- (tuples with STRefs call for a bit of a monadic mess)
     else do
       let (legalMoves,legalMatches) = V.unzip $ legalMatchMoves (t^.root.lastMove) state
-      let len = length legalMoves - 1
-      newWeights <- forM (V.replicate (len+1) ()) (\_ -> newSTRef $ (0,0))
-      newStates <- forM legalMatches (newSTRef)
-      let pairs = V.zip newStates newWeights
-      let z = V.toList $ V.zip pairs legalMoves
-      let newSubForest = V.fromList $! [MCT (MCN move nextState nextWeight False Nothing) V.empty | (pair@(nextState,nextWeight),move)<-z]
+      let len = length legalMoves
+      newWeights <- forM ((V.replicate $ len) ()) (\_ -> newSTRef $ (0,0))
+      newStates <- mapM newSTRef legalMatches
+      let triplets = V.zip3 legalMoves newStates newWeights
+      let newSubForest = V.map (\(m,s,w) -> MCT (MCN m s w False Nothing) V.empty) triplets
       let newZipper = (t{_sForest=newSubForest},ps)
-      forM [0..len] (simAndBackprop gen winner newZipper)
-      return $! allTheWayBack newZipper
+      forM_ [0..(len-1)] (simAndBackprop gen toWin $! newZipper)
+      return $! (allTheWayBack $! newZipper)
 
 simAndBackprop :: R.StdGen -> Token -> ZipNode s -> Int -> ST s ()
-simAndBackprop gen winner zipper n = do
-  let targetZipper@(t,ps) = descendTo zipper n
-  state <- readSTRef $!  _currentMatch . _root $ t
-  let triplet = (t^.root.lastMove, state,Left True)
-  let simulatedTriplet@(_,_,endingStatus) = simulationUTTT gen triplet
+simAndBackprop gen toWin zipper n = do
+  let targetZipper@(t,_) = descendTo zipper n
+  state <- readSTRef $! t^.root.currentMatch
+  let (_,_,endingStatus) = simulationUTTT gen $! (t^.root.lastMove, state, Left True)
   let diff = if isLeft endingStatus
                then tieWeight
-               else matchOutcome (Just $! fromRight undefined endingStatus) winner
-  backprop targetZipper diff
+               else matchOutcome (eitherToMaybe endingStatus) toWin
+  (backprop $! targetZipper) $! diff
 
 mctsAlgorithm :: R.StdGen -> Int -> Token -> ST s (ZipNode s)
   -> ST s (Move, Match Token)
-mctsAlgorithm gen iteration winner wZipper
-  -- after computationalBudget iterations, return the best children of root
-  -- according to ucb
+mctsAlgorithm gen iteration toWin wZipper
   | iteration >= computationalBudget = do
-      (t,ps) <- wZipper
-      n <- bestChild gen t
-      let child = _root $! (_sForest t ! n)
-      m <- readSTRef $! child^.currentMatch
-      return (child^.lastMove, m)
+      --tree <- fmap fst wZipper
+      tree <- fmap (fst . allTheWayBack) wZipper
+      bChild <- (!) <$!> pure (tree^.sForest) <*> (bestChild gen $! tree)
+      bChildState <- readSTRef $! bChild^.root.currentMatch
+      return $! (bChild^.root.lastMove, bChildState)
   | otherwise = do
-      (t,ps) <- wZipper
-      if
-        -- leaf of the game tree
-        | t^.root.isOver -> do
-            m <- readSTRef (_currentMatch . _root $ t)
-            let diff = matchOutcome (_winner . _root $ t) winner
-            backprop (t,ps) $! diff
-            let newZipper = return $! allTheWayBack (t,ps)
-            mctsAlgorithm gen (iteration + 1) winner $! newZipper
-        -- node whose children have not been visited
-        | (V.null $ t^.sForest) -> do
-            let newZipper = expand gen winner (t,ps)
-            mctsAlgorithm gen (iteration + 1) winner $! newZipper
-        -- node whose children's have already been visited
-        | otherwise -> do
-            n <- bestChild gen t
-            let newZipper = return $! (descendTo (t, ps) n)
-            mctsAlgorithm gen iteration winner $! newZipper
-            -- NB the iteration number is not incremented, as the algorithm
-            -- is not getting back to the root
+      z@(t,_) <- wZipper
+      if | t^.root.isOver -> do -- leaf of the game tree
+             backprop z $! (matchOutcome $! (t^.root.winner)) toWin
+             mctsAlgorithm gen (iteration + 1) toWin $! pure $! allTheWayBack z
+         | (V.null $ t^.sForest) -> -- node whose children have not been visited
+             mctsAlgorithm gen (iteration + 1) toWin $! expand gen toWin z
+         | otherwise -> do -- node whose children's have already been visited
+             n <- bestChild gen t
+             mctsAlgorithm gen iteration toWin $! pure (descendTo z n)
 
 getBestMove :: R.StdGen -> (Move, Match Token)
   -> (Move, Match Token)
@@ -193,6 +163,5 @@ getBestMove gen pair@(move,match)
   | otherwise = runST $ do
       m <- newSTRef match
       weight <- newSTRef (0,0)
-      let gameTree = MCT (MCN move m weight False Nothing) V.empty
-      let gameZipper = return $ (gameTree, [])
-      mctsAlgorithm gen 0 (nextPlayer $ move^.agent) $! gameZipper
+      let gameTree = MCT ((MCN move m $! weight) False Nothing) V.empty
+      mctsAlgorithm gen 0 (nextPlayer $ move^.agent) $ pure $! (gameTree, [])

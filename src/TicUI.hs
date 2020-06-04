@@ -1,4 +1,4 @@
-module TicUI where
+module TicUI () where
 
 import Game
 import Data.Vector (Vector, (!))

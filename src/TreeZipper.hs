@@ -5,10 +5,9 @@ module TreeZipper where
 import Game
 import Rules
 
-import           Data.Vector (Vector, (++), (!))
+import           Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import           Control.Lens
-import           Control.Monad.ST
 import           Data.STRef
 
 -- ###################  Monte Carlo Tree Data Structures #######################
@@ -24,9 +23,6 @@ data MCNode s = MCN { _lastMove :: !Move
                     }
 
 makeLenses ''MCNode
-
-getWeight :: MCTree s -> STRef s (ValueOfNode,NumberOfVisits)
-getWeight = _weight . _root
 
 data MCTree s = MCT { _root :: MCNode s
                     , _sForest :: Vector (MCTree s)
