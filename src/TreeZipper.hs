@@ -8,43 +8,43 @@ import Rules
 import           Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import           Control.Lens
-import           Data.STRef
+import           Data.IORef
 
 -- ###################  Monte Carlo Tree Data Structures #######################
 type ValueOfNode = Double
 type NumberOfVisits = Int
-type Weight s = STRef s (ValueOfNode,NumberOfVisits)
+type Weight = IORef (ValueOfNode,NumberOfVisits)
 
-data MCNode s = MCN { _lastMove :: !Move
-                    , _currentMatch :: !(STRef s (Match Token))
-                    , _weight :: !(Weight s)
-                    , _isOver :: !Bool
-                    , _winner :: !(Maybe Token)
-                    }
+data MCNode = MCN { _lastMove :: !Move
+                  , _currentMatch :: !(IORef (Match Token))
+                  , _weight :: !(Weight)
+                  , _isOver :: !Bool
+                  , _winner :: !(Maybe Token)
+                  }
 
 makeLenses ''MCNode
 
-data MCTree s = MCT { _root :: MCNode s
-                    , _sForest :: Vector (MCTree s)
-                    }
+data MCTree = MCT { _root :: MCNode
+                  , _sForest :: Vector (MCTree)
+                  }
 
 makeLenses ''MCTree
 
-type Forest s = Vector (MCTree s)
+type Forest = Vector (MCTree)
 
 -- Zipper structure on Vector Trees
 
-data Position s = Node { _leftForest :: Forest s -- forest to the left
-                       , _rightForest :: Forest s -- forest to the right
-                       , _parent :: MCNode s -- label of parent node
-                       }
+data Position = Node { _leftForest :: Forest -- forest to the left
+                     , _rightForest :: Forest -- forest to the right
+                     , _parent :: MCNode -- label of parent node
+                     }
 
-type ZipNode s = (MCTree s, [Position s])
+type ZipNode = (MCTree, [Position])
 
-depth :: ZipNode s -> Int
+depth :: ZipNode -> Int
 depth (_,p) = length p
 
-stepBack :: ZipNode s -> ZipNode s
+stepBack :: ZipNode -> ZipNode
 stepBack (_,[]) = error "The root has no parent node"
 stepBack (t,(p:ps)) = (t',ps)
   where newRoot = _parent p
@@ -52,7 +52,7 @@ stepBack (t,(p:ps)) = (t',ps)
         rF = _rightForest p
         t' = MCT newRoot (lF V.++ (V.singleton t) V.++ rF)
 
-descendTo :: ZipNode s -> Int -> ZipNode s
+descendTo :: ZipNode -> Int -> ZipNode
 descendTo (t,ps) n = (t',(Node l r p):ps)
   where sub = _sForest t
         t' = sub ! n
@@ -60,12 +60,12 @@ descendTo (t,ps) n = (t',(Node l r p):ps)
         r = V.drop (n+1) sub
         p = _root t
 
-allTheWayBack :: ZipNode s -> ZipNode s
+allTheWayBack :: ZipNode -> ZipNode
 allTheWayBack (t,ps) =
   if length ps == 0
     then (t,ps)
     else allTheWayBack $! stepBack (t,ps)
 
-replaceNode :: ZipNode s -> MCNode s -> ZipNode s
+replaceNode :: ZipNode -> MCNode -> ZipNode
 replaceNode (t,ps) new = (t',ps)
   where t' = t{ _root = new }

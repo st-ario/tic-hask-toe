@@ -83,9 +83,14 @@ col = lens getCol setCol
 data Move = Move { _outer :: Coord
                  , _inner :: Coord
                  , _agent :: Token
-                 } deriving (Show)
+                 } deriving Eq
 
 makeLenses ''Move
+
+instance Show Move where
+  show (Move (Coord (a,b)) (Coord (x,y)) t) =
+    "Outer: " ++ (show (a,b)) ++ " " ++ "Inner: " ++ (show (x,y)) ++ " "
+      ++ "Token: " ++ show t
 
 -- given last player, last move and TTT grid, determine its status
 -- optimal number of checks
