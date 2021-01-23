@@ -14,7 +14,7 @@ import qualified System.Random as R
 import           System.IO
 import           Data.IORef
 import           Control.Lens
-import           Debug.Trace (trace)
+--import           Debug.Trace (trace)
 import           Data.Maybe (isNothing, fromJust)
 import           Data.Either (isLeft)
 import           Data.Either.Extra (eitherToMaybe)
@@ -23,6 +23,9 @@ import           Data.List (elemIndices)
 import           Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import qualified Control.Concurrent as C
+
+trd :: (a,b,c) -> c
+trd (_,_,c) = c
 
 -- ############################  Simulation Step  ##############################
 
@@ -39,40 +42,60 @@ simulationUTTT gen (move,match,status)
 
 -- ###################  Monte Carlo Tree Search Algorithm ######################
 
--- #### Parameters to Tune:
-tieWeight   = 0
-winWeight   = 1
-lossWeight  = -1
-ucbConst    = 1.73264
-computationalBudget = 25 :: Int -- sec * 10^-1
--- ########################
+-- ###### Constants ######
+-- tieWeight   = 0.015625 :: Double-- 1/64
+-- winWeight   = 1        :: Double
+-- lossWeight  = 0        :: Double
+tieWeight   = 0        :: Double
+winWeight   = 1        :: Double
+lossWeight  = -1       :: Double
+-- #######################
 
-matchOutcome :: Maybe Token -> Token -> Double
-matchOutcome mt t
-  | isNothing mt = tieWeight
-  | y == t = winWeight
-  | otherwise = lossWeight
-  where y = fromJust mt
+computationalBudget = 20 :: Int -- sec * 10^-1
 
 -- Upper Confidence Bound formula
-ucb :: Double -> Int -> Int -> Double
 -- UCB1:
-ucb v nChild nParent  = (v / nc) + ucbConst * sqrt (2* (log np) / nc)
--- UCB-Minimal:
--- ucb v nChild _  = (v / nc) + ucbConst * (1 / nc)
-  where nc = fromIntegral nChild :: Double
-        np = fromIntegral nParent :: Double
+ucbConst    = 2.9
+-- 3.4 bad
+ucb :: Int -> Int -> Int -> Int -> Double
+ucb wins losses visits parentVisits  =
+  mean + sqrt (ucbConst * (log nP) / n)
+  where w = fromIntegral wins
+        l = fromIntegral losses
+        n = fromIntegral visits
+        nP = fromIntegral parentVisits
+        mean = (w - l) / n
 
-getWeight :: MCTree -> IORef (ValueOfNode,NumberOfVisits)
+{--
+-- UCB1-Tuned
+ucb :: Int -> Int -> Int -> Int -> Double
+ucb wins losses visits parentVisits =
+  mean + sqrt (minimum [0.25, auxValue] * (log nP) / n)
+  where w = fromIntegral wins
+        l = fromIntegral losses
+        n = fromIntegral visits
+        nP = fromIntegral parentVisits
+        mean = (63*w + n - l) / (64 * n)
+        auxValue = (((127*w + n - l) / (128*n)) - (mean^2)) +  sqrt(2* (log nP) / n)
+--}
+
+getWeight :: MCTree -> IORef (NumberOfWins,NumberOfLosses,NumberOfVisits)
 getWeight = _weight . _root
+
+incr :: Double -> (Int,Int,Int) -> (Int,Int,Int)
+incr diff (w,l,n)
+  | diff == tieWeight  = (w  ,l  ,n+1)
+  | diff == winWeight  = (w+1,l  ,n+1)
+  | diff == lossWeight = (w  ,l+1,n+1)
+  | otherwise = undefined
 
 backprop :: ZipNode -> Double -> IO ()
 backprop (t,ps) diff = do
-  let incr (v,n) =  (v + diff , n + 1)
-  modifyIORef' (getWeight t) $! incr
-  if length ps == 0
-    then return ()
-    else (backprop $! stepBack (t,ps)) $! diff
+  modifyIORef' (getWeight t) $! (incr diff)
+  if | length ps == 0 -> return ()
+     | diff == winWeight -> (backprop $! stepBack (t,ps)) $! lossWeight
+     | diff == lossWeight -> (backprop $! stepBack (t,ps)) $! winWeight
+     | diff == tieWeight -> (backprop $! stepBack (t,ps)) $! tieWeight
 
 argMaxIndices :: Ord b => (a -> b) -> Vector a -> Vector Int
 argMaxIndices f vs = (V.elemIndices $! max) results
@@ -83,11 +106,11 @@ argMaxIndices f vs = (V.elemIndices $! max) results
 -- if multiple children maximize ucb, pick one randomly
 bestChild :: R.StdGen -> MCTree -> IO Int
 bestChild gen t = do
-  parentN <- snd <$!> (readIORef . getWeight) t
+  parentN <- trd <$!> (readIORef . getWeight) t
   valuesList <- mapM (readIORef . getWeight) $! t^.sForest
   --trace ("the weigh of the parent is " ++ show parentN) $ pure ()
-  --trace ("the weights of the children are " ++ (show $ fmap snd valuesList)) $ pure ()
-  let toMaximize (v,c) = ucb v c $! parentN
+  --trace ("the weights of the children are " ++ (show $ valuesList)) $ pure ()
+  let toMaximize (wins,losses,visits) = ucb wins losses visits $! parentN
   let positions = argMaxIndices toMaximize $! valuesList
   --trace ("ucb is maximized by the ones in position " ++ show positions) $ return ()
   --trace ("the UCBs are " ++ show (fmap toMaximize valuesList)) $ return ()
@@ -95,7 +118,7 @@ bestChild gen t = do
   if len == 0
     then return (positions ! 0)
     else do let r = fst $! R.randomR (0,len) gen
-            -- trace ("let's pick " ++ show (positions !! r)) $ return ()
+            --trace ("let's pick " ++ show (positions ! r)) $ return ()
             return (positions ! r)
 
 expand :: R.StdGen -> Token -> ZipNode -> IO (ZipNode)
@@ -110,8 +133,7 @@ expand gen toWin (t,ps) = do
       let oldRoot = t^.root
       (newRoot,diff) <- if isLeft status
         then return $! (oldRoot{_isOver=True},tieWeight)
-        else return $! (oldRoot{_isOver=True, _winner=actualWinner}
-                       ,matchOutcome actualWinner toWin)
+        else return $! (oldRoot{_isOver=True, _winner=actualWinner},winWeight)
       let newZipper = ((MCT $! newRoot) V.empty,ps)
       (backprop $! newZipper) $! diff
       return $! allTheWayBack newZipper
@@ -120,7 +142,7 @@ expand gen toWin (t,ps) = do
     else do
       let (legalMoves,legalMatches) = V.unzip $ legalMatchMoves (t^.root.lastMove) state
       let len = length legalMoves
-      newWeights <- forM ((V.replicate $ len) ()) (\_ -> newIORef $ (0,0))
+      newWeights <- forM ((V.replicate $ len) ()) (\_ -> newIORef $ (0,0,0))
       newStates <- mapM newIORef legalMatches
       let triplets = V.zip3 legalMoves newStates newWeights
       let newSubForest = V.map (\(m,s,w) -> MCT (MCN m s w False Nothing) V.empty) triplets
@@ -135,14 +157,14 @@ simAndBackprop gen toWin zipper n = do
   let (_,_,endingStatus) = simulationUTTT (snd . R.next $ gen) $! (t^.root.lastMove, state, Left True)
   let diff = if isLeft endingStatus
                then tieWeight
-               else matchOutcome (eitherToMaybe endingStatus) toWin
+               else winWeight
   (backprop $! targetZipper) $! diff
 
 mctsAlgorithm :: R.StdGen -> Token -> IO (ZipNode) -> IO ()
 mctsAlgorithm gen toWin wZipper = do
     z@(t,_) <- wZipper
     if | t^.root.isOver -> do -- leaf of the game tree
-           backprop z $! (matchOutcome $! (t^.root.winner)) toWin
+           backprop z winWeight
            mctsAlgorithm gen toWin $! pure $! allTheWayBack z
        | (V.null $ t^.sForest) -> do -- node whose children have not been visited
            let (g,g') = R.split gen
@@ -157,7 +179,7 @@ getBestMove gen pair@(move,match)
   | smartMatchStatus pair /= Left True = error "No legal moves available"
   | otherwise = do
       m <- newIORef match
-      weight <- newIORef (0,0)
+      weight <- newIORef (0,0,0)
       let gameTree = MCT ((MCN move m $! weight) False Nothing) V.empty
       let toWin = (nextPlayer $ move^.agent)
       let (g,g') = R.split gen
@@ -168,7 +190,7 @@ getBestMove gen pair@(move,match)
       bChild <- (!) <$!> pure (finalTree^.sForest) <*> (bestChild gen $! finalTree)
       bChildState <- readIORef $! bChild^.root.currentMatch
       sims <- readIORef (_weight . _root $ finalTree)
-      trace ("Simulations: " ++ show sims) $ return ()
+      --trace ("Simulations: " ++ show sims) $ return ()
       return $! (bChild^.root.lastMove, bChildState)
 
 -- Parametric variants, for parameter tuning (the constant in UCB is an argument)
@@ -179,7 +201,7 @@ getBestMoveParam gen cons pair@(move,match)
   | smartMatchStatus pair /= Left True = error "No legal moves available"
   | otherwise = do
       m <- newIORef match
-      weight <- newIORef (0,0)
+      weight <- newIORef (0,0,0)
       let gameTree = MCT ((MCN move m $! weight) False Nothing) V.empty
       let toWin = (nextPlayer $ move^.agent)
       let (g,g') = R.split gen
@@ -197,7 +219,7 @@ mctsAlgorithmParam :: R.StdGen -> Double -> Token -> IO (ZipNode) -> IO ()
 mctsAlgorithmParam gen cons toWin wZipper = do
     z@(t,_) <- wZipper
     if | t^.root.isOver -> do -- leaf of the game tree
-           backprop z $! (matchOutcome $! (t^.root.winner)) toWin
+           backprop z winWeight
            mctsAlgorithmParam gen cons toWin $! pure $! allTheWayBack z
        | (V.null $ t^.sForest) -> do -- node whose children have not been visited
            let (g,g') = R.split gen
@@ -208,9 +230,9 @@ mctsAlgorithmParam gen cons toWin wZipper = do
 
 bestChildParam :: R.StdGen -> Double -> MCTree -> IO Int
 bestChildParam gen cons t = do
-  parentN <- snd <$!> (readIORef . getWeight) t
+  parentN <- trd <$!> (readIORef . getWeight) t
   valuesList <- mapM (readIORef . getWeight) $! t^.sForest
-  let toMaximize (v,c) = ucbParam cons v c $! parentN
+  let toMaximize (wins,losses,visits) = ucb wins losses visits $! parentN
   let positions = argMaxIndices toMaximize $! valuesList
   let len = (length $! positions) - 1
   if len == 0

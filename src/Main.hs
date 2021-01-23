@@ -115,17 +115,22 @@ main = do
   case selection of
     "0" -> gameLoop g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
     "1" -> selectionY g
-    "2" -> aiVai g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
-    --"test" -> aiVaiParamX g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
+    --"2" -> aiVai g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
+    "2" -> aiVaiParamX g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
     _   -> do putStrLn "Cannot parse input. AI will play as X."
               gameLoop g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
   return ()
 
 -- Parametric versions, for parameter tuning
 
-constX = 1 --
-constO = 1 --
+constX = 3.4 --
+-- ties
+constO = 2.9 --
 
+-- 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 3.5 bad
+-- 2.9, 3.4 base level (kinda even)
+
+-- 0.3 -- 3.9
 -- 0.7294x
 -- 1.73264x
 

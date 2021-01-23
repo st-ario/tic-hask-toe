@@ -11,9 +11,10 @@ import           Control.Lens
 import           Data.IORef
 
 -- ###################  Monte Carlo Tree Data Structures #######################
-type ValueOfNode = Double
+type NumberOfWins = Int
+type NumberOfLosses = Int
 type NumberOfVisits = Int
-type Weight = IORef (ValueOfNode,NumberOfVisits)
+type Weight = IORef (NumberOfWins,NumberOfLosses,NumberOfVisits)
 
 data MCNode = MCN { _lastMove :: !Move
                   , _currentMatch :: !(IORef (Match Token))
