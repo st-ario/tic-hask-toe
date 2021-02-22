@@ -13,6 +13,7 @@ module Game
 , toVector
 , smartGridStatus
 , smartMatchStatus
+, simplify -- remove later
 ) where
 
 import           Control.Lens

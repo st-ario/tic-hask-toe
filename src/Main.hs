@@ -12,7 +12,9 @@ import           Control.Monad
 import           Data.Char (digitToInt)
 import qualified Data.Vector as V
 import           Data.Maybe (isNothing, fromJust)
-import           System.Exit (exitSuccess)
+import           System.Exit
+--import           System.Exit (exitSuccess)
+import           System.Environment (getArgs)
 
 --clear = "\ESC[2J\ESC[H"
 clear = ""
@@ -102,6 +104,8 @@ selectionY gen = do
   let newState = fromJust $ setMatchEl userMove emptyMatch
   gameLoop gen (userMove, newState)
 
+-- TODO:
+-- if given arguments, us aiVai, if no arguments, use prompt
 main :: IO ()
 main = do
   putStr clear
@@ -116,44 +120,58 @@ main = do
     "0" -> gameLoop g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
     "1" -> selectionY g
     --"2" -> aiVai g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
-    "2" -> aiVaiParamX g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
+    --"2" -> aiVaiParamX g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
     _   -> do putStrLn "Cannot parse input. AI will play as X."
               gameLoop g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
   return ()
+-- #############################################################################
+-- main :: IO ()
+-- main = do
+--   (scX:scO:_) <- getArgs
+--   let constX = read scX :: Double
+--   let constO = read scO :: Double
+--   g <- R.newStdGen
+--   aiVaiParamX g constX constO (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
+--   return ()
 
 -- Parametric versions, for parameter tuning
 
-constX = 3.4 --
--- ties
-constO = 2.9 --
-
--- 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 3.5 bad
--- 2.9, 3.4 base level (kinda even)
-
--- 0.3 -- 3.9
--- 0.7294x
--- 1.73264x
-
-aiVaiParamX :: R.StdGen -> (Move, Match Token) -> IO ()
-aiVaiParamX gen pair = do
-  putStrLn "Thinking..."
+aiVaiParamX :: R.StdGen -> Double -> Double -> (Move, Match Token) -> IO ()
+aiVaiParamX gen constX constO pair = do
+  --putStrLn "Thinking..."
   state@(computerMove,currentBoard) <- getBestMoveParam gen constX pair
-  putStrLn $ clear ++ show currentBoard
-  putStrLn $ "Last move was"
-  putStrLn $ show $ computerMove
-  if smartMatchStatus state /= Left True
-    then do putStrLn "Game Over"
-            exitSuccess
-    else aiVaiParamO (snd . R.next $ gen) state
+  --putStrLn $ clear ++ show currentBoard
+  --putStrLn $ "Last move was"
+  --putStrLn $ show $ computerMove
+  let status = smartMatchStatus state
+  if status == Left False
+    then die "E"
+    else  if status == Right o
+            then die "O"
+            else if status == Right x
+                   then die "X"
+                   else aiVaiParamO (snd . R.next $ gen) constX constO state
+  --if smartMatchStatus state /= Left True
+  --  then do putStrLn "Game Over"
+  --          exitSuccess
+  --  else aiVaiParamO (snd . R.next $ gen) state
 
-aiVaiParamO :: R.StdGen -> (Move, Match Token) -> IO ()
-aiVaiParamO gen pair = do
-  putStrLn "Thinking..."
+aiVaiParamO :: R.StdGen -> Double -> Double -> (Move, Match Token) -> IO ()
+aiVaiParamO gen constX constO pair = do
+  --putStrLn "Thinking..."
   state@(computerMove,currentBoard) <- getBestMoveParam gen constO pair
-  putStrLn $ clear ++ show currentBoard
-  putStrLn $ "Last move was"
-  putStrLn $ show $ computerMove
-  if smartMatchStatus state /= Left True
-    then do putStrLn "Game Over"
-            exitSuccess
-    else aiVaiParamX (snd . R.next $ gen) state
+  --putStrLn $ clear ++ show currentBoard
+  --putStrLn $ "Last move was"
+  --putStrLn $ show $ computerMove
+  let status = smartMatchStatus state
+  if status == Left False
+    then die "E"
+    else  if status == Right x
+            then die "X"
+            else if status == Right o
+                   then die "O"
+                   else aiVaiParamO (snd . R.next $ gen) constX constO state
+  -- if smartMatchStatus state /= Left True
+  --   then do putStrLn "Game Over"
+  --           exitSuccess
+  --   else aiVaiParamX (snd . R.next $ gen) state
