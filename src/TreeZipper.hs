@@ -17,7 +17,7 @@ type NumberOfVisits = Int
 type Weight = IORef (NumberOfWins,NumberOfLosses,NumberOfVisits)
 
 data MCNode = MCN { _lastMove :: !Move
-                  , _currentMatch :: !(IORef (Match Token))
+                  , _currentMatch :: !(Match Token)
                   , _weight :: !(Weight)
                   , _isOver :: !Bool
                   , _winner :: !(Maybe Token)
@@ -51,10 +51,10 @@ stepBack (t,(p:ps)) = (t',ps)
   where newRoot = _parent p
         lF = _leftForest p
         rF = _rightForest p
-        t' = MCT newRoot (lF V.++ (V.singleton t) V.++ rF)
+        t' = (MCT $! newRoot) $! (lF V.++ (V.singleton t) V.++ rF)
 
 descendTo :: ZipNode -> Int -> ZipNode
-descendTo (t,ps) n = (t',(Node l r p):ps)
+descendTo (t,ps) n = (t',(((Node $! l)$! r) $! p):ps)
   where sub = _sForest t
         t' = sub ! n
         l = V.take n sub
@@ -63,7 +63,7 @@ descendTo (t,ps) n = (t',(Node l r p):ps)
 
 allTheWayBack :: ZipNode -> ZipNode
 allTheWayBack (t,ps) =
-  if length ps == 0
+  if null ps
     then (t,ps)
     else allTheWayBack $! stepBack (t,ps)
 
