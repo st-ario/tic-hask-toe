@@ -18,6 +18,7 @@ import           System.Environment (getArgs)
 
 --clear = "\ESC[2J\ESC[H"
 clear = ""
+ucbConst = 1
 
 emptyGrid = Grid $ V.replicate 9 em
 emptyMatch = Match $ Grid $ V.replicate 9 (emptyGrid, Left True)
@@ -60,7 +61,7 @@ parseMove raw token = do
 gameLoop :: R.StdGen -> (Move, Match Token) -> IO ()
 gameLoop gen pair = do
   putStrLn "Thinking..."
-  state@(computerMove,currentBoard) <- getBestMove gen pair
+  state@(computerMove,currentBoard) <- getBestMove gen ucbConst pair
   putStrLn $ clear ++ show currentBoard
   putStrLn $ "AI's last move was"
   putStrLn $ show $ computerMove
@@ -86,7 +87,7 @@ gameLoop gen pair = do
 aiVai :: R.StdGen -> (Move, Match Token) -> IO ()
 aiVai gen pair = do
   putStrLn "Thinking..."
-  state@(computerMove,currentBoard) <- getBestMove gen pair
+  state@(computerMove,currentBoard) <- getBestMove gen ucbConst pair
   putStrLn $ clear ++ show currentBoard
   putStrLn $ "Last move was"
   putStrLn $ show $ computerMove
@@ -104,10 +105,8 @@ selectionY gen = do
   let newState = fromJust $ setMatchEl userMove emptyMatch
   gameLoop gen (userMove, newState)
 
--- TODO:
--- if given arguments, us aiVai, if no arguments, use prompt
-main :: IO ()
-main = do
+interactiveMain :: IO ()
+interactiveMain = do
   putStr clear
   g <- R.newStdGen
   putStrLn "Welcome to Tic-Hask-Toe!"
@@ -124,22 +123,29 @@ main = do
     _   -> do putStrLn "Cannot parse input. AI will play as X."
               gameLoop g (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
   return ()
--- #############################################################################
--- main :: IO ()
--- main = do
---   (scX:scO:_) <- getArgs
---   let constX = read scX :: Double
---   let constO = read scO :: Double
---   g <- R.newStdGen
---   aiVaiParamX g constX constO (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
---   return ()
+
+testingMain :: IO ()
+testingMain = do
+  (scX:scO:_) <- getArgs
+  let constX = read scX :: Double
+  let constO = read scO :: Double
+  g <- R.newStdGen
+  aiVaiParamX g constX constO (Move (Coord (1,1)) (Coord (1,1)) o, emptyMatch)
+  return ()
+
+main :: IO ()
+main = do
+  args <- getArgs
+  if null args
+    then interactiveMain
+    else testingMain
 
 -- Parametric versions, for parameter tuning
 
 aiVaiParamX :: R.StdGen -> Double -> Double -> (Move, Match Token) -> IO ()
 aiVaiParamX gen constX constO pair = do
   --putStrLn "Thinking..."
-  state@(computerMove,currentBoard) <- getBestMoveParam gen constX pair
+  state@(computerMove,currentBoard) <- getBestMove gen constX pair
   --putStrLn $ clear ++ show currentBoard
   --putStrLn $ "Last move was"
   --putStrLn $ show $ computerMove
@@ -159,7 +165,7 @@ aiVaiParamX gen constX constO pair = do
 aiVaiParamO :: R.StdGen -> Double -> Double -> (Move, Match Token) -> IO ()
 aiVaiParamO gen constX constO pair = do
   --putStrLn "Thinking..."
-  state@(computerMove,currentBoard) <- getBestMoveParam gen constO pair
+  state@(computerMove,currentBoard) <- getBestMove gen constO pair
   --putStrLn $ clear ++ show currentBoard
   --putStrLn $ "Last move was"
   --putStrLn $ show $ computerMove
@@ -170,7 +176,7 @@ aiVaiParamO gen constX constO pair = do
             then die "X"
             else if status == Right o
                    then die "O"
-                   else aiVaiParamO (snd . R.next $ gen) constX constO state
+                   else aiVaiParamX (snd . R.next $ gen) constX constO state
   -- if smartMatchStatus state /= Left True
   --   then do putStrLn "Game Over"
   --           exitSuccess

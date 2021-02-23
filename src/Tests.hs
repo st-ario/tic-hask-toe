@@ -58,4 +58,4 @@ gM = (move0, mat)
 main = do
   g <- R.newStdGen
   -- return $ simulationUTTT g (moveX, mat, (Left True))
-  return $ getBestMove g gM
+  return $ getBestMove g 1 gM
