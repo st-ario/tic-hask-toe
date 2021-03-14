@@ -147,10 +147,14 @@ expand gen toWin (t,ps) = do
       let triplets = ((V.zip3 $! legalMoves) $! legalMatches) $! newWeights
       let newSubForest = V.map (\(m,s,w) -> MCT (MCN m s w False False) V.empty) $! triplets
       let newZipper = (t{_sForest=newSubForest},ps)
+      {--
+      -- changing gen every time
       genList <- forM [0..(len-1)] (\_ -> R.newStdGen)
       let auxList = zip genList [0..(len-1)]
       let auxF (g,n) = (simAndBackprop g toWin $! newZipper) n
       forM auxList auxF
+      --}
+      forM_ [0..(len-1)] (simAndBackprop gen toWin $! newZipper)
       return $! (allTheWayBack $! newZipper)
 
 simAndBackprop :: R.StdGen -> Token -> ZipNode -> Int -> IO ()
