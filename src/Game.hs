@@ -11,8 +11,8 @@ module Game
 , Status
 , toGrid
 , toVector
-, smartGridStatus
-, smartMatchStatus
+, gridStatus
+, matchStatus
 , simplify -- remove later
 ) where
 
@@ -95,8 +95,8 @@ instance Show Move where
 
 -- given last player, last move and TTT grid, determine its status
 -- optimal number of checks
-smartGridStatus :: Token -> Coord -> Grid Token -> Status
-smartGridStatus lp (Coord (r,c)) (Grid vt)
+gridStatus :: Token -> Coord -> Grid Token -> Status
+gridStatus lp (Coord (r,c)) (Grid vt)
     -- this case can arise when evaluating the status of a status grid
     | vt!pos == em =
       if V.any (==em) (vt // [(pos,x)])
@@ -171,14 +171,14 @@ simplify (Left _) = em
 
 -- given last move and current match, return a grid of all the statuses
 -- of subgrids and the status of the current match
-smartReduceMatch :: Move -> Match Token -> (Grid Status, Status)
-smartReduceMatch (Move outer inner lp) (Match g@(Grid grids)) = (Grid $! statusGrid,status)
+reduceMatch :: Move -> Match Token -> (Grid Status, Status)
+reduceMatch (Move outer inner lp) (Match g@(Grid grids)) = (Grid $! statusGrid,status)
   where statusGrid = V.map snd grids
-        status = (smartGridStatus lp outer) $ Grid $! V.map simplify statusGrid
+        status = (gridStatus lp outer) $ Grid $! V.map simplify statusGrid
 
-smartMatchStatus :: (Move, Match Token) -> Status
-smartMatchStatus (move,match)
+matchStatus :: (Move, Match Token) -> Status
+matchStatus (move,match)
   | isRight s = s
   | V.any (== Left True) vs = Left True
   | otherwise = Left False
-  where (Grid vs,s) = smartReduceMatch move match
+  where (Grid vs,s) = reduceMatch move match

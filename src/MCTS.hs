@@ -14,7 +14,7 @@ import qualified System.Random as R
 import           System.IO
 import           Data.IORef
 import           Control.Lens
--- import           Debug.Trace (trace)
+import           Debug.Trace (trace)
 import           Data.Maybe (isNothing, fromJust)
 import           Data.Either (isLeft)
 import           Data.Either.Extra (eitherToMaybe)
@@ -37,8 +37,8 @@ simulationUTTT gen (move,match,status)
     where nextMoves = legalMatchMoves move match
           next = V.map (\(a,b)-> (a,b,Left True)) nextMoves
           len = (length $! nextMoves) - 1
-          (rnd,newGen) = (R.randomR $! (0, len)) gen
-          outcome = smartMatchStatus (move,match)
+          (rnd,newGen) = (R.uniformR $! (0 :: Int, len :: Int)) gen
+          outcome = matchStatus (move,match)
 
 -- ###################  Monte Carlo Tree Search Algorithm ######################
 
@@ -94,9 +94,9 @@ backprop :: ZipNode -> Outcome -> IO ()
 backprop (t,ps) ending = do
   modifyIORef' (getWeight t) $! (incr ending)
   if | null ps -> return ()
-     | ending == win  -> (backprop $! stepBack (t,ps)) $! loss
-     | ending == loss -> (backprop $! stepBack (t,ps)) $! win
-     | ending == tie  -> (backprop $! stepBack (t,ps)) $! tie
+     | ending == win  -> (backprop $! destructiveStepBack (t,ps)) $! loss
+     | ending == loss -> (backprop $! destructiveStepBack (t,ps)) $! win
+     | ending == tie  -> (backprop $! destructiveStepBack (t,ps)) $! tie
 
 argMaxIndices :: Ord b => (a -> b) -> Vector a -> Vector Int
 argMaxIndices f vs = (V.elemIndices $! max) results
@@ -118,14 +118,14 @@ bestChild gen cons t = do
   let len = (length $! positions) - 1
   if len == 0
     then return (positions ! 0)
-    else do let r = fst $! R.randomR (0,len) gen
+    else do let r = fst $! R.uniformR (0 :: Int,len :: Int) gen
             --trace ("let's pick " ++ show (positions ! r)) $ return ()
             return (positions ! r)
 
 expand :: R.StdGen -> Token -> ZipNode -> IO (ZipNode)
 expand gen toWin (t,ps) = do
   let (lM, state) = (t^.root.lastMove, t^.root.currentMatch)
-  let status = smartMatchStatus $! (lM,state)
+  let status = matchStatus $! (lM,state)
   -- if an actual leaf of the game tree is reached, update the node with
   -- this information, backpropagate and return root zipper
   if status /= Left True
@@ -134,15 +134,7 @@ expand gen toWin (t,ps) = do
       let oldRoot = t^.root
       (newRoot,ending) <- if isLeft status
         then return $! (oldRoot{_isOver=True},tie)
-        else return $! (oldRoot{_isOver=True, _winner=actualWinner},win)
-      --let (newRoot,diff) = if | actualWinner == Nothing ->
-      --                          (oldRoot{_isOver=True},tieWeight)
-      --                        | actualWinner == Just toWin ->
-      --                          (oldRoot{_isOver=True, _winner=actualWinner},winWeight)
-      --                        | otherwise ->
-      --                          (oldRoot{_isOver=True, _winner=actualWinner},lossWeight)
-      -- ###### the above is wrong, but double check the weight
-      -- ###### backprop should always use the winning weight for an actual leaf
+        else return $! (oldRoot{_isOver=True, _isWon=True},win)
       let newZipper = ((MCT $! newRoot) V.empty,ps)
       (backprop $! newZipper) $! ending
       return $! allTheWayBack newZipper
@@ -153,17 +145,20 @@ expand gen toWin (t,ps) = do
       let len = length $! legalMoves
       newWeights <- forM ((V.replicate $ len) ()) (\_ -> newIORef $ (0,0,0))
       let triplets = ((V.zip3 $! legalMoves) $! legalMatches) $! newWeights
-      let newSubForest = V.map (\(m,s,w) -> MCT (MCN m s w False Nothing) V.empty) $! triplets
+      let newSubForest = V.map (\(m,s,w) -> MCT (MCN m s w False False) V.empty) $! triplets
       let newZipper = (t{_sForest=newSubForest},ps)
-      -- TODO should change gen every time
-      forM_ [0..(len-1)] (simAndBackprop gen toWin $! newZipper)
+      genList <- forM [0..(len-1)] (\_ -> R.newStdGen)
+      let auxList = zip genList [0..(len-1)]
+      let auxF (g,n) = (simAndBackprop g toWin $! newZipper) n
+      forM auxList auxF
       return $! (allTheWayBack $! newZipper)
 
 simAndBackprop :: R.StdGen -> Token -> ZipNode -> Int -> IO ()
 simAndBackprop gen toWin zipper n = do
-  let targetZipper@(t,_) = descendTo zipper n
+  let targetZipper@(t,_) = destructiveDescendTo zipper n
   let (state, lastAgent) = (t^.root.currentMatch, t^.root.lastMove.agent)
-  let (_,_,endingStatus) = simulationUTTT (snd . R.next $ gen) $! (t^.root.lastMove, state, Left True)
+  newGen <- R.newStdGen
+  let (_,_,endingStatus) = simulationUTTT newGen $! (t^.root.lastMove, state, Left True)
   let ending = if | endingStatus == Left False -> tie
                   | endingStatus == Right lastAgent -> win
                   | otherwise -> loss
@@ -173,9 +168,9 @@ mctsAlgorithm :: R.StdGen -> Double -> Token -> IO (ZipNode) -> IO ()
 mctsAlgorithm gen cons toWin wZipper = do
     z@(t,_) <- wZipper
     if | t^.root.isOver -> do -- leaf of the game tree
-           let leafWinner = t^.root.winner
-           if | leafWinner == Nothing      -> backprop z tie
-              | otherwise                  -> backprop z win
+           if t^.root.isWon
+             then backprop z win
+             else backprop z tie
            mctsAlgorithm gen cons toWin $! pure $! allTheWayBack z
        | (V.null $ t^.sForest) -> do -- node whose children have not been visited
            let (g,g') = R.split gen
@@ -187,10 +182,10 @@ mctsAlgorithm gen cons toWin wZipper = do
 getBestMove :: R.StdGen -> Double -> (Move, Match Token)
   -> IO (Move, Match Token)
 getBestMove gen cons pair@(move,match)
-  | smartMatchStatus pair /= Left True = error "No legal moves available"
+  | matchStatus pair /= Left True = error "No legal moves available"
   | otherwise = do
       weight <- newIORef (0,0,0)
-      let gameTree = MCT ((MCN move match $! weight) False Nothing) V.empty
+      let gameTree = MCT ((MCN move match $! weight) False False) V.empty
       let toWin = (nextPlayer $ move^.agent)
       let (g,g') = R.split gen
       wZipper@(finalTree,_) <- expand g toWin $! (gameTree,[])
@@ -200,5 +195,5 @@ getBestMove gen cons pair@(move,match)
       bChild <- (!) <$!> pure (finalTree^.sForest) <*> (bestChild gen cons $! finalTree)
       let bChildState = bChild^.root.currentMatch
       sims <- readIORef (_weight . _root $ finalTree)
-      -- trace ("Simulations: " ++ show sims) $ return ()
+      trace ("Simulations: " ++ show sims) $ return ()
       return $! (bChild^.root.lastMove, bChildState)

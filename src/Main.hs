@@ -18,7 +18,7 @@ import           System.Environment (getArgs)
 
 --clear = "\ESC[2J\ESC[H"
 clear = ""
-ucbConst = 1
+ucbConst = 0.525
 
 emptyGrid = Grid $ V.replicate 9 em
 emptyMatch = Match $ Grid $ V.replicate 9 (emptyGrid, Left True)
@@ -65,7 +65,7 @@ gameLoop gen pair = do
   putStrLn $ clear ++ show currentBoard
   putStrLn $ "AI's last move was"
   putStrLn $ show $ computerMove
-  if smartMatchStatus state /= Left True
+  if matchStatus state /= Left True
     then do putStrLn "Game Over"
             exitSuccess
     else return ()
@@ -74,15 +74,19 @@ gameLoop gen pair = do
   userMove <- testInput inputMove computerMove currentBoard
   putStrLn $ "Your move was " ++ (show userMove)
   let newState = setMatchEl userMove currentBoard
-  if smartMatchStatus (userMove, fromJust newState) /= Left True
-    then do putStrLn $ show $ fromJust newState
+  if matchStatus (userMove, newState) /= Left True
+    then do putStrLn $ show newState
             putStrLn $ "Last move was"
             putStrLn $ show $ computerMove
             putStrLn "Game Over"
             exitSuccess
     else return ()
-  gameLoop (snd . R.next $ gen) (userMove, fromJust $ newState)
+  newGen <- R.newStdGen
+  gameLoop newGen (userMove, newState)
   return ()
+  -- BUG : if the user wins, the "Last move was" shows the last move done by the AI
+  -- (i.e. the penultimate move) and not the winning one, done by the user.
+  -- TODO : show the outcome of the match (TIE!, X WINS!, O WINS!) before exiting
 
 aiVai :: R.StdGen -> (Move, Match Token) -> IO ()
 aiVai gen pair = do
@@ -91,10 +95,11 @@ aiVai gen pair = do
   putStrLn $ clear ++ show currentBoard
   putStrLn $ "Last move was"
   putStrLn $ show $ computerMove
-  if smartMatchStatus state /= Left True
+  newGen <- R.newStdGen
+  if matchStatus state /= Left True
     then do putStrLn "Game Over"
             exitSuccess
-    else aiVai (snd . R.next $ gen) state
+    else aiVai newGen state
 
 selectionY :: R.StdGen -> IO ()
 selectionY gen = do
@@ -102,7 +107,7 @@ selectionY gen = do
   inputMove <- getLine
   userMove <- testInput' inputMove emptyMatch
   putStrLn $ "Your move was " ++ (show userMove)
-  let newState = fromJust $ setMatchEl userMove emptyMatch
+  let newState = setMatchEl userMove emptyMatch
   gameLoop gen (userMove, newState)
 
 interactiveMain :: IO ()
@@ -149,18 +154,19 @@ aiVaiParamX gen constX constO pair = do
   --putStrLn $ clear ++ show currentBoard
   --putStrLn $ "Last move was"
   --putStrLn $ show $ computerMove
-  let status = smartMatchStatus state
+  let status = matchStatus state
+  newGen <- R.newStdGen
   if status == Left False
     then die "E"
     else  if status == Right o
             then die "O"
             else if status == Right x
                    then die "X"
-                   else aiVaiParamO (snd . R.next $ gen) constX constO state
-  --if smartMatchStatus state /= Left True
+                   else aiVaiParamO newGen constX constO state
+  --if matchStatus state /= Left True
   --  then do putStrLn "Game Over"
   --          exitSuccess
-  --  else aiVaiParamO (snd . R.next $ gen) state
+  --  else aiVaiParamO newGen state
 
 aiVaiParamO :: R.StdGen -> Double -> Double -> (Move, Match Token) -> IO ()
 aiVaiParamO gen constX constO pair = do
@@ -169,15 +175,16 @@ aiVaiParamO gen constX constO pair = do
   --putStrLn $ clear ++ show currentBoard
   --putStrLn $ "Last move was"
   --putStrLn $ show $ computerMove
-  let status = smartMatchStatus state
+  let status = matchStatus state
+  newGen <- R.newStdGen
   if status == Left False
     then die "E"
     else  if status == Right x
             then die "X"
             else if status == Right o
                    then die "O"
-                   else aiVaiParamX (snd . R.next $ gen) constX constO state
-  -- if smartMatchStatus state /= Left True
+                   else aiVaiParamX newGen constX constO state
+  -- if matchStatus state /= Left True
   --   then do putStrLn "Game Over"
   --           exitSuccess
-  --   else aiVaiParamX (snd . R.next $ gen) state
+  --   else aiVaiParamX newGen state
