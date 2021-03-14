@@ -1,3 +1,5 @@
+{-# LANGUAGE MonadComprehensions #-}
+
 module Rules
 ( nextPlayer
 , legalMatchMoves
@@ -8,6 +10,7 @@ import Game
 import TicUI
 
 import           Control.Lens
+import           Control.Monad (guard)
 import           Data.Tree (Tree, Forest, unfoldTree)
 import qualified Data.Tree as T
 import           Data.Maybe (isNothing, fromJust)
@@ -34,45 +37,50 @@ setGridEl :: Coord -> w -> Grid w -> Grid w
 setGridEl (Coord (r,c)) w (Grid vs) = Grid $! vs // [(pos,w)]
   where pos = (3*r + c)
 
-setMatchEl :: Move -> Match Token -> Maybe (Match Token)
-setMatchEl move (Match m)
-  | isRight (snd target) || Left False == snd target = Nothing
-  | otherwise = Just $ Match $!
-      ((setGridEl (Coord (orow,ocol))) $! (newInnerGrid,newInnerStatus)) m
+-- given a raw position, return the corresponding coordinate
+intToCoord :: Int -> Coord
+intToCoord n = Coord (row, column)
+  where row = n `div` 3
+        column = n `mod` 3
+
+-- given a move and a match, return the updated match pair (match grid, status)
+setMatchEl :: Move -> Match Token -> Match Token
+setMatchEl move (Match m) = Match $!
+                              ((setGridEl (Coord (orow,ocol))) $! (newInnerGrid,newInnerStatus)) m
     where orow = move^.outer.row
           ocol = move^.outer.col
           irow  = move^.inner.row
           icol  = move^.inner.col
           player = move^.agent
-          pos = (3*orow + ocol)
-          target = getGridEl (Coord $! (orow,ocol)) m
-          innerGrid = fst $! target
-          newInnerGrid = (setGridEl (Coord $! (irow,icol)) $! player) innerGrid
-          newInnerStatus = ((smartGridStatus $! player) (Coord $! (irow,icol))) newInnerGrid
+          target = getGridEl (Coord $! (orow,ocol)) $! m
+          newInnerGrid = (setGridEl (Coord $! (irow,icol)) $! player) $! (fst $! target)
+          newInnerStatus = ((gridStatus $! player) (Coord $! (irow,icol))) $! newInnerGrid
 
 -- return all the coordinates of slots that are ongoing
-ongoingSlots :: Grid Status -> [Coord]
-ongoingSlots g = [ (Coord (m,n)) | m <- [0..2], n <- [0..2],
-                  Left True == getGridEl (Coord (m,n)) g]
+ongoingSlots :: Grid Status -> Vector Coord
+ongoingSlots (Grid g) = [intToCoord pos | pos <- V.elemIndices (Left True) g]
 
-gridOngoingSlots :: Grid Token -> [Coord]
-gridOngoingSlots g = [Coord (m,n) | m<-[0..2], n<-[0..2],
-                      em == getGridEl (Coord (m,n)) g]
+gridOngoingSlots :: Grid Token -> Vector Coord
+gridOngoingSlots (Grid g) = [intToCoord pos | pos <- V.elemIndices em g]
 
--- given last move and current match status, return all legal positions
--- achievable from it
+-- given last move and current match status, return all legal positions achievable from it
 legalMatchMoves :: Move -> Match Token -> Vector (Move, Match Token)
 legalMatchMoves (Move _ lastInner lastPlayer) match@(Match m)
-  | not (elem lastInner $! ongoingGrids) = V.fromList $!
-    [ (Move outer inner $! p
-      , fromJust $! setMatchEl (((Move $! outer) $! inner) $! p) match) |
-      outer <- ongoingGrids,
-      inner <- gridOngoingSlots $! targetGrid outer]
-  | otherwise = V.fromList $!
-    [ ((Move lastInner $! inner) $! p
-      , fromJust $! setMatchEl ((Move lastInner $! inner) $! p) match) |
-      inner <- gridOngoingSlots $! targetGrid lastInner]
+  -- if lastInner corresponds to an ongoing grid
+  | targetGridStatus == Left True = do
+      inner <- gridOngoingSlots $! targetGrid
+      -- outer = lastInner
+      let outMove = (Move lastInner $! inner) $! p
+      return $! (outMove, setMatchEl outMove match)
+  | otherwise = do
+      outer <- ongoingGrids
+      inner <- gridOngoingSlots $! destinationGrid outer
+      let outMove = (Move outer inner $! p)
+      return $! (outMove, setMatchEl outMove match)
     where p = nextPlayer lastPlayer
-          statusGrid = fmap snd m
+          targetPair = getGridEl lastInner $! m
+          targetGrid = fst $! targetPair
+          targetGridStatus = snd $! targetPair
           ongoingGrids = ongoingSlots $! statusGrid
-          targetGrid coord = fst $! getGridEl coord m
+          statusGrid = fmap snd m
+          destinationGrid coord = fst $! getGridEl coord m
