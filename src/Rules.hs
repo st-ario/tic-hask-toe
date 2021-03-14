@@ -57,30 +57,32 @@ setMatchEl move (Match m) = Match $!
           newInnerStatus = ((gridStatus $! player) (Coord $! (irow,icol))) $! newInnerGrid
 
 -- return all the coordinates of slots that are ongoing
-ongoingSlots :: Grid Status -> Vector Coord
-ongoingSlots (Grid g) = [intToCoord pos | pos <- V.elemIndices (Left True) g]
+ongoingSlots :: Grid Status -> [Coord]
+ongoingSlots g = [ (Coord (m,n)) | m <- [0..2], n <- [0..2],
+                  Left True == getGridEl (Coord (m,n)) g]
 
-gridOngoingSlots :: Grid Token -> Vector Coord
-gridOngoingSlots (Grid g) = [intToCoord pos | pos <- V.elemIndices em g]
+gridOngoingSlots :: Grid Token -> [Coord]
+gridOngoingSlots g = [Coord (m,n) | m<-[0..2], n<-[0..2],
+                      em == getGridEl (Coord (m,n)) g]
 
 -- given last move and current match status, return all legal positions achievable from it
 legalMatchMoves :: Move -> Match Token -> Vector (Move, Match Token)
 legalMatchMoves (Move _ lastInner lastPlayer) match@(Match m)
   -- if lastInner corresponds to an ongoing grid
   | targetGridStatus == Left True = do
-      inner <- gridOngoingSlots $! targetGrid
+      inner <- V.fromList $ gridOngoingSlots $! targetGrid
       -- outer = lastInner
       let outMove = (Move lastInner $! inner) $! p
       return $! (outMove, setMatchEl outMove match)
   | otherwise = do
       outer <- ongoingGrids
-      inner <- gridOngoingSlots $! destinationGrid outer
+      inner <- V.fromList $ gridOngoingSlots $! destinationGrid outer
       let outMove = (Move outer inner $! p)
       return $! (outMove, setMatchEl outMove match)
     where p = nextPlayer lastPlayer
           targetPair = getGridEl lastInner $! m
           targetGrid = fst $! targetPair
           targetGridStatus = snd $! targetPair
-          ongoingGrids = ongoingSlots $! statusGrid
+          ongoingGrids = V.fromList $ ongoingSlots $! statusGrid
           statusGrid = fmap snd m
           destinationGrid coord = fst $! getGridEl coord m
