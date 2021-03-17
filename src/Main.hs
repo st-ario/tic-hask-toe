@@ -18,10 +18,10 @@ import           System.Environment (getArgs)
 
 --clear = "\ESC[2J\ESC[H"
 clear = ""
-ucbConst = 0.525
+ucbConst = 0.5
 
 emptyGrid = Grid $ V.replicate 9 em
-emptyMatch = Match $ Grid $ V.replicate 9 (emptyGrid, Left True)
+emptyMatch = Match $ Grid $ V.replicate 9 (emptyGrid, Ongoing)
 
 validInputs = replicateM 4 ['0'..'2']
 
@@ -65,7 +65,7 @@ gameLoop gen pair = do
   putStrLn $ clear ++ show currentBoard
   putStrLn $ "AI's last move was"
   putStrLn $ show $ computerMove
-  if matchStatus state /= Left True
+  if matchStatus state /= Ongoing 
     then do putStrLn "Game Over"
             exitSuccess
     else return ()
@@ -74,7 +74,7 @@ gameLoop gen pair = do
   userMove <- testInput inputMove computerMove currentBoard
   putStrLn $ "Your move was " ++ (show userMove)
   let newState = setMatchEl userMove currentBoard
-  if matchStatus (userMove, newState) /= Left True
+  if matchStatus (userMove, newState) /= Ongoing 
     then do putStrLn $ show newState
             putStrLn $ "Last move was"
             putStrLn $ show $ computerMove
@@ -96,7 +96,7 @@ aiVai gen pair = do
   putStrLn $ "Last move was"
   putStrLn $ show $ computerMove
   newGen <- R.newStdGen
-  if matchStatus state /= Left True
+  if matchStatus state /= Ongoing 
     then do putStrLn "Game Over"
             exitSuccess
     else aiVai newGen state
@@ -156,14 +156,14 @@ aiVaiParamX gen constX constO pair = do
   --putStrLn $ show $ computerMove
   let status = matchStatus state
   newGen <- R.newStdGen
-  if status == Left False
+  if status == Tie
     then die "E"
-    else  if status == Right o
+    else  if status == WonBy o
             then die "O"
-            else if status == Right x
+            else if status == WonBy x
                    then die "X"
                    else aiVaiParamO newGen constX constO state
-  --if matchStatus state /= Left True
+  --if matchStatus state /= Ongoing 
   --  then do putStrLn "Game Over"
   --          exitSuccess
   --  else aiVaiParamO newGen state
@@ -177,14 +177,14 @@ aiVaiParamO gen constX constO pair = do
   --putStrLn $ show $ computerMove
   let status = matchStatus state
   newGen <- R.newStdGen
-  if status == Left False
+  if status == Tie
     then die "E"
-    else  if status == Right x
+    else  if status == WonBy x
             then die "X"
-            else if status == Right o
+            else if status == WonBy o
                    then die "O"
                    else aiVaiParamX newGen constX constO state
-  -- if matchStatus state /= Left True
+  -- if matchStatus state /= Ongoing 
   --   then do putStrLn "Game Over"
   --           exitSuccess
   --   else aiVaiParamX newGen state

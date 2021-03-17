@@ -3,7 +3,7 @@ module TicUI () where
 import Game
 import Data.Vector (Vector, (!))
 
--- auxiliary function, useful to render differently a single grid, and a grid
+-- auxiliary function, used to render differently a single grid, and a grid
 -- of grids
 showRow :: (Show w) => Int -> Grid w -> String
 showRow n (Grid b)

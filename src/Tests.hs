@@ -43,9 +43,9 @@ h7 = Grid $ fromList [em,o,x,o,em,o,em,em,em]
 h8 = Grid $ fromList [x,em,em,o,o,o,x,em,em]
 
 
-s = fromList [Right o, Left True, Right o,
-              Right x, Right o, Right x,
-              Left True, Left True, Right o]
+s = fromList [WonBy o, Ongoing, WonBy o,
+              WonBy x, WonBy o, WonBy x,
+              Ongoing, Ongoing, WonBy o]
 
 met' = fromList [g0,g1,g2,g3,g4,g5,g6,g7,g8]
 
@@ -62,7 +62,7 @@ move5 = (Move (Coord (2,0)) (Coord (1,2)) x)
 moveX = (Move (Coord (1,1)) (Coord (0,0)) o)
 
 metNew = fromList [gI,gI,gI,gI,gI,gI,gI,gI,gI]
-statusNew = fromList [Left True,Left True,Left True,Left True,Left True,Left True,Left True,Left True,Left True]
+statusNew = fromList [Ongoing,Ongoing,Ongoing,Ongoing,Ongoing,Ongoing,Ongoing,Ongoing,Ongoing]
 
 matNew = Match $ Grid $ V.zip metNew statusNew
 
@@ -70,6 +70,6 @@ gM = (move0, mat)
 {--
 main = do
   g <- R.newStdGen
-  -- return $ simulationUTTT g (moveX, mat, (Left True))
+  -- return $ simulationUTTT g (moveX, mat, (Ongoing))
   return $ getBestMove g 1 gM
 --}

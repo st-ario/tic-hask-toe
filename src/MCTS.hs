@@ -14,7 +14,7 @@ import qualified System.Random as R
 import           System.IO
 import           Data.IORef
 import           Control.Lens
-import           Debug.Trace (trace)
+-- import           Debug.Trace (trace)
 import           Data.Maybe (isNothing, fromJust)
 import           Data.Either (isLeft)
 import           Data.Either.Extra (eitherToMaybe)
@@ -32,10 +32,10 @@ trd (_,_,c) = c
 simulationUTTT :: R.StdGen -> (Move, Match Token, Status)
   -> (Move, Match Token, Status)
 simulationUTTT gen (move,match,status)
-  | outcome /= Left True = (move,match,outcome)
+  | outcome /= Ongoing = (move,match,outcome)
   | otherwise = simulationUTTT newGen $! ((!) $! next) $! rnd
     where nextMoves = legalMatchMoves move match
-          next = V.map (\(a,b)-> (a,b,Left True)) nextMoves
+          next = V.map (\(a,b)-> (a,b,Ongoing)) nextMoves
           len = (length $! nextMoves) - 1
           (rnd,newGen) = (R.uniformR $! (0 :: Int, len :: Int)) gen
           outcome = matchStatus (move,match)
@@ -128,7 +128,7 @@ expand gen toWin (t,ps) = do
   let status = matchStatus $! (lM,state)
   -- if an actual leaf of the game tree is reached, update the node with
   -- this information, backpropagate and return root zipper
-  if status /= Left True
+  if status /= Ongoing 
     then do
       let actualWinner = eitherToMaybe status
       let oldRoot = t^.root
@@ -162,9 +162,9 @@ simAndBackprop gen toWin zipper n = do
   let targetZipper@(t,_) = destructiveDescendTo zipper n
   let (state, lastAgent) = (t^.root.currentMatch, t^.root.lastMove.agent)
   newGen <- R.newStdGen
-  let (_,_,endingStatus) = simulationUTTT newGen $! (t^.root.lastMove, state, Left True)
-  let ending = if | endingStatus == Left False -> tie
-                  | endingStatus == Right lastAgent -> win
+  let (_,_,endingStatus) = simulationUTTT newGen $! (t^.root.lastMove, state, Ongoing)
+  let ending = if | endingStatus == Tie -> tie
+                  | endingStatus == WonBy lastAgent -> win
                   | otherwise -> loss
   (backprop $! targetZipper) $! ending
 
@@ -186,7 +186,7 @@ mctsAlgorithm gen cons toWin wZipper = do
 getBestMove :: R.StdGen -> Double -> (Move, Match Token)
   -> IO (Move, Match Token)
 getBestMove gen cons pair@(move,match)
-  | matchStatus pair /= Left True = error "No legal moves available"
+  | matchStatus pair /= Ongoing = error "No legal moves available"
   | otherwise = do
       weight <- newIORef (0,0,0)
       let gameTree = MCT ((MCN move match $! weight) False False) V.empty
@@ -199,5 +199,5 @@ getBestMove gen cons pair@(move,match)
       bChild <- (!) <$!> pure (finalTree^.sForest) <*> (bestChild gen cons $! finalTree)
       let bChildState = bChild^.root.currentMatch
       sims <- readIORef (_weight . _root $ finalTree)
-      trace ("Simulations: " ++ show sims) $ return ()
+      -- trace ("Simulations: " ++ show sims) $ return ()
       return $! (bChild^.root.lastMove, bChildState)
