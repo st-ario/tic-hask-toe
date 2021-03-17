@@ -14,7 +14,7 @@ import           Control.Monad (guard)
 import           Data.Tree (Tree, Forest, unfoldTree)
 import qualified Data.Tree as T
 import           Data.Maybe (isNothing, fromJust)
-import           Data.Either (isRight)
+-- import           Data.Either (isRight)
 import           Data.Vector(Vector, (!), (//), singleton)
 import qualified Data.Vector as V
 
@@ -34,8 +34,10 @@ getGridEl (Coord (r,c)) (Grid vs) = (!) vs $! pos
 
 -- setters don't check whether a change is a legal move or not
 setGridEl :: Coord -> w -> Grid w -> Grid w
-setGridEl (Coord (r,c)) w (Grid vs) = Grid $! vs // [(pos,w)]
-  where pos = (3*r + c)
+setGridEl (Coord (r,c)) w (Grid vs) = Grid $!
+  (V.take pos vs) V.++ (singleton w) V.++ (V.drop (pos+1) vs)
+    where pos = (3*r + c)
+  
 
 -- given a raw position, return the corresponding coordinate
 intToCoord :: Int -> Coord
@@ -59,7 +61,7 @@ setMatchEl move (Match m) = Match $!
 -- return all the coordinates of slots that are ongoing
 ongoingSlots :: Grid Status -> [Coord]
 ongoingSlots g = [ (Coord (m,n)) | m <- [0..2], n <- [0..2],
-                  Left True == getGridEl (Coord (m,n)) g]
+                  Ongoing == getGridEl (Coord (m,n)) g]
 
 gridOngoingSlots :: Grid Token -> [Coord]
 gridOngoingSlots g = [Coord (m,n) | m<-[0..2], n<-[0..2],
@@ -69,7 +71,7 @@ gridOngoingSlots g = [Coord (m,n) | m<-[0..2], n<-[0..2],
 legalMatchMoves :: Move -> Match Token -> Vector (Move, Match Token)
 legalMatchMoves (Move _ lastInner lastPlayer) match@(Match m)
   -- if lastInner corresponds to an ongoing grid
-  | targetGridStatus == Left True = do
+  | targetGridStatus == Ongoing = do
       inner <- V.fromList $ gridOngoingSlots $! targetGrid
       -- outer = lastInner
       let outMove = (Move lastInner $! inner) $! p

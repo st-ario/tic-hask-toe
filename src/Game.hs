@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Game
 ( Token(..), o, em, x
@@ -9,11 +10,13 @@ module Game
 , Move(..), inner, outer, agent
 , Coord(..), row, col
 , Status
+, pattern Tie
+, pattern Ongoing
+, pattern WonBy
 , toGrid
 , toVector
 , gridStatus
 , matchStatus
-, simplify -- remove later
 ) where
 
 import           Control.Lens
@@ -35,10 +38,18 @@ instance Show Token where
 
 -- Status of a TTT or UTTT game
 type Status = Either Bool Token
+
   -- Left True  represents an ongoing status
+pattern Ongoing :: Status
+pattern Ongoing = Left True
+
   -- Left False represents a tied status
+pattern Tie :: Status
+pattern Tie = Left False
+
   -- Right w    represents a status won by w
-  -- status /= Left True means the game is over
+pattern WonBy :: Token -> Status
+pattern WonBy w =  Right w
 
 newtype Grid w = Grid (Vector w) deriving Eq
 
@@ -100,73 +111,73 @@ gridStatus lp (Coord (r,c)) (Grid vt)
     -- this case can arise when evaluating the status of a status grid
     | vt!pos == em =
       if V.any (==em) (vt // [(pos,x)])
-        then Left True
-        else Left False
+        then Ongoing
+        else Tie
     | (r,c) == (1,1) =
       if
-        | lp == vt!3 && lp == vt!5 -> Right lp -- check row
-        | lp == vt!1 && lp == vt!7 -> Right lp -- check column
-        | lp == vt!0 && lp == vt!8 -> Right lp -- check first diagonal
-        | lp == vt!2 && lp == vt!6 -> Right lp -- check other diagonal
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!3 && lp == vt!5 -> WonBy lp -- check row
+        | lp == vt!1 && lp == vt!7 -> WonBy lp -- check column
+        | lp == vt!0 && lp == vt!8 -> WonBy lp -- check first diagonal
+        | lp == vt!2 && lp == vt!6 -> WonBy lp -- check other diagonal
+        | V.any (==em) vt -> Ongoing
+        | otherwise -> Tie
     | (r,c) == (0,0) =
       if
-        | lp == vt!1 && lp == vt!2 -> Right lp -- check row
-        | lp == vt!3 && lp == vt!6 -> Right lp -- check column
-        | lp == vt!4 && lp == vt!8 -> Right lp -- check diagonal
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!1 && lp == vt!2 -> WonBy lp -- check row
+        | lp == vt!3 && lp == vt!6 -> WonBy lp -- check column
+        | lp == vt!4 && lp == vt!8 -> WonBy lp -- check diagonal
+        | V.any (==em) vt -> Ongoing
+        | otherwise -> Tie
     | (r,c) == (0,2) =
       if
-        | lp == vt!0 && lp == vt!1 -> Right lp -- check row
-        | lp == vt!5 && lp == vt!8 -> Right lp -- check column
-        | lp == vt!4 && lp == vt!6 -> Right lp -- check diagonal
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!0 && lp == vt!1 -> WonBy lp -- check row
+        | lp == vt!5 && lp == vt!8 -> WonBy lp -- check column
+        | lp == vt!4 && lp == vt!6 -> WonBy lp -- check diagonal
+        | V.any (==em) vt -> Ongoing
+        | otherwise -> Tie
     | (r,c) == (2,0) =
       if
-        | lp == vt!7 && lp == vt!8 -> Right lp -- check row
-        | lp == vt!0 && lp == vt!3 -> Right lp -- check column
-        | lp == vt!2 && lp == vt!4 -> Right lp -- check diagonal
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!7 && lp == vt!8 -> WonBy lp -- check row
+        | lp == vt!0 && lp == vt!3 -> WonBy lp -- check column
+        | lp == vt!2 && lp == vt!4 -> WonBy lp -- check diagonal
+        | V.any (==em) vt -> Ongoing 
+        | otherwise -> Tie
     | (r,c) == (2,2) =
       if
-        | lp == vt!6 && lp == vt!7 -> Right lp -- check row
-        | lp == vt!2 && lp == vt!5 -> Right lp -- check column
-        | lp == vt!0 && lp == vt!4 -> Right lp -- check diagonal
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!6 && lp == vt!7 -> WonBy lp -- check row
+        | lp == vt!2 && lp == vt!5 -> WonBy lp -- check column
+        | lp == vt!0 && lp == vt!4 -> WonBy lp -- check diagonal
+        | V.any (==em) vt -> Ongoing
+        | otherwise -> Tie
     | (r,c) == (0,1) =
       if
-        | lp == vt!0 && lp == vt!2 -> Right lp -- check row
-        | lp == vt!4 && lp == vt!7 -> Right lp -- check column
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!0 && lp == vt!2 -> WonBy lp -- check row
+        | lp == vt!4 && lp == vt!7 -> WonBy lp -- check column
+        | V.any (==em) vt -> Ongoing
+        | otherwise -> Tie
     | (r,c) == (1,0) =
       if
-        | lp == vt!4 && lp == vt!5 -> Right lp -- check row
-        | lp == vt!0 && lp == vt!6 -> Right lp -- check column
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!4 && lp == vt!5 -> WonBy lp -- check row
+        | lp == vt!0 && lp == vt!6 -> WonBy lp -- check column
+        | V.any (==em) vt -> Ongoing
+        | otherwise -> Tie
     | (r,c) == (1,2) =
       if
-        | lp == vt!3 && lp == vt!4 -> Right lp -- check row
-        | lp == vt!2 && lp == vt!8 -> Right lp -- check column
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!3 && lp == vt!4 -> WonBy lp -- check row
+        | lp == vt!2 && lp == vt!8 -> WonBy lp -- check column
+        | V.any (==em) vt -> Ongoing
+        | otherwise -> Tie
     | (r,c) == (2,1) =
       if
-        | lp == vt!6 && lp == vt!8 -> Right lp -- check row
-        | lp == vt!1 && lp == vt!4 -> Right lp -- check column
-        | V.any (==em) vt -> Left True
-        | otherwise -> Left False
+        | lp == vt!6 && lp == vt!8 -> WonBy lp -- check row
+        | lp == vt!1 && lp == vt!4 -> WonBy lp -- check column
+        | V.any (==em) vt -> Ongoing
+        | otherwise -> Tie
     | otherwise = undefined
     where pos = 3*r + c
 
 simplify :: Either Bool Token -> Token
-simplify (Right t) = t
+simplify (WonBy t) = t
 simplify (Left _) = em
 
 -- given last move and current match, return a grid of all the statuses
@@ -179,6 +190,6 @@ reduceMatch (Move outer inner lp) (Match g@(Grid grids)) = (Grid $! statusGrid,s
 matchStatus :: (Move, Match Token) -> Status
 matchStatus (move,match)
   | isRight s = s
-  | V.any (== Left True) vs = Left True
-  | otherwise = Left False
+  | V.any (== Ongoing) vs = Ongoing
+  | otherwise = Tie
   where (Grid vs,s) = reduceMatch move match
