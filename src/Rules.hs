@@ -14,7 +14,6 @@ import           Control.Monad (guard)
 import           Data.Tree (Tree, Forest, unfoldTree)
 import qualified Data.Tree as T
 import           Data.Maybe (isNothing, fromJust)
--- import           Data.Either (isRight)
 import           Data.Vector(Vector, (!), (//), singleton)
 import qualified Data.Vector as V
 

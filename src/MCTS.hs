@@ -1,10 +1,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module MCTS
-( getBestMove
---, simulationUTTT
-) where
+module MCTS (getBestMove) where
 
 import Game
 import Rules
@@ -14,7 +11,6 @@ import qualified System.Random as R
 import           System.IO
 import           Data.IORef
 import           Control.Lens
--- import           Debug.Trace (trace)
 import           Data.Maybe (isNothing, fromJust)
 import           Data.Either (isLeft)
 import           Data.Either.Extra (eitherToMaybe)
@@ -58,28 +54,6 @@ ucb cons wins losses visits parentVisits  =
         nP = fromIntegral parentVisits
         mean = (w - l) / n
 
-{--
--- UCB1-Tuned
-ucb :: Double -> Int -> Int -> Int -> Int -> Double
-ucb _ wins losses 1 parentVisits =
-  mean + sqrt (minimum [0.25, auxValue] * (log nP))
-  where w = fromIntegral wins
-        l = fromIntegral losses
-        nP = fromIntegral parentVisits
-        mean = (w - l)
-        unbiasedVariance = (w + l - (w - l)^2)
-        auxValue = unbiasedVariance +  sqrt(2* (log nP))
-ucb _ wins losses visits parentVisits =
-  mean + sqrt (minimum [0.25, auxValue] * (log nP) / n)
-  where w = fromIntegral wins
-        l = fromIntegral losses
-        n = fromIntegral visits
-        nP = fromIntegral parentVisits
-        mean = (w - l) / n
-        unbiasedVariance = (w + l - ((w - l)^2)/n) / (n-1)
-        auxValue = unbiasedVariance +  sqrt(2* (log nP) / n)
---}
-
 getWeight :: MCTree -> IORef (NumberOfWins,NumberOfLosses,NumberOfVisits)
 getWeight = _weight . _root
 
@@ -109,17 +83,12 @@ bestChild :: R.StdGen -> Double -> MCTree -> IO Int
 bestChild gen cons t = do
   parentN <- trd <$!> (readIORef . getWeight) t
   valuesList <- mapM (readIORef . getWeight) $! t^.sForest
-  --trace ("the weigh of the parent is " ++ show parentN) $ pure ()
-  --trace ("the weights of the children are " ++ (show $ valuesList)) $ pure ()
   let toMaximize (wins,losses,visits) = ucb cons wins losses visits $! parentN
   let positions = argMaxIndices toMaximize $! valuesList
-  --trace ("ucb is maximized by the ones in position " ++ show positions) $ return ()
-  --trace ("the UCBs are " ++ show (fmap toMaximize valuesList)) $ return ()
   let len = (length $! positions) - 1
   if len == 0
     then return (positions ! 0)
     else do let r = fst $! R.uniformR (0 :: Int,len :: Int) gen
-            --trace ("let's pick " ++ show (positions ! r)) $ return ()
             return (positions ! r)
 
 expand :: R.StdGen -> Token -> ZipNode -> IO (ZipNode)
@@ -147,13 +116,6 @@ expand gen toWin (t,ps) = do
       let triplets = ((V.zip3 $! legalMoves) $! legalMatches) $! newWeights
       let newSubForest = V.map (\(m,s,w) -> MCT (MCN m s w False False) V.empty) $! triplets
       let newZipper = (t{_sForest=newSubForest},ps)
-      {--
-      -- changing gen every time
-      genList <- forM [0..(len-1)] (\_ -> R.newStdGen)
-      let auxList = zip genList [0..(len-1)]
-      let auxF (g,n) = (simAndBackprop g toWin $! newZipper) n
-      forM auxList auxF
-      --}
       forM_ [0..(len-1)] (simAndBackprop gen toWin $! newZipper)
       return $! (allTheWayBack $! newZipper)
 
@@ -199,5 +161,4 @@ getBestMove gen cons pair@(move,match)
       bChild <- (!) <$!> pure (finalTree^.sForest) <*> (bestChild gen cons $! finalTree)
       let bChildState = bChild^.root.currentMatch
       sims <- readIORef (_weight . _root $ finalTree)
-      -- trace ("Simulations: " ++ show sims) $ return ()
       return $! (bChild^.root.lastMove, bChildState)
