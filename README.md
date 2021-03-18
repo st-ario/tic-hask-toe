@@ -58,4 +58,4 @@ selection policy.
 
 The exploitation parameter has been set by training the AI with a simple
 [ELO](https://en.wikipedia.org/wiki/Elo_rating_system)-based script.
-The parameter has been chosen using a sensitivity of `0.25`.
+The parameter has been chosen using a sensitivity of `0.025`.
